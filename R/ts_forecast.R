@@ -1,0 +1,152 @@
+#' Initialize a time series of power forecasts. Assumes training data already captures
+#' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
+#'
+#' @param x A list of training data the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site')
+#' or a [ntrain x nsites] matrix for scale=='region' or 'total'
+#' @param start_time A lubridate time stamp
+#' @param time_step Time step in hours
+#' @param scale One of 'site', 'region', 'total'
+#' @param location A string
+#' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @param n An integer: Number of samples to take
+#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+ts_forecast <- function(x, start_time, time_step,
+                        scale='region',
+                        location='unknown',
+                        method='vine',
+                        n=3000,
+                        epsilon=c(0.05, 0.95)) {
+  # Check inputs
+  if (!((dim(x[[1]])[2] == 1 & tolower(scale) %in% c("site", "s")) | (dim(x[[1]])[2] > 1 & tolower(scale) %in% c("region", "total", "r", "t")))){
+      stop("Data and scale mis-match. x should be a list the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site') or a [ntrain x nsites] matrix for scale=='region' or 'total")
+  }
+
+  sun_up <- unlist(lapply(x, check_sunup))
+  forecasts <- calc_forecasts(x, sun_up, start_time, time_step, scale, location, method, n, epsilon)
+
+  dat <- list(start_time = start_time,
+              scale = scale,
+              location = location,
+              time_step = time_step,
+              forecasts = forecasts,
+              sun_up = sun_up
+  )
+  structure(dat, class = "ts_forecast")
+}
+
+#' Check GHI/power matrix for any positive numbers
+#'
+#' @param x A matrix
+#' @return A boolean
+check_sunup <- function(x){
+  return(any(x>0))
+}
+
+#' Calculate a time series list of power forecasts.
+#'
+#' @param x A list of training data the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site')
+#' or a [ntrain x nsites] matrix for scale=='region' or 'total'
+#' @param sun_up Logical vector the length of the time-series
+#' @param start_time A lubridate time stamp
+#' @param time_step Time step in hours
+#' @param scale One of 'site', 'region', 'total'
+#' @param location A string
+#' @param method One of 'gaussian', 'empirical', 'vine'
+#' @param n An integer: Number of samples to take
+#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+#' @return A list of forecasts. Forecast is NA for times when sun is down.
+calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, n, epsilon) {
+  forecast_class <- get_forecast_class(scale, method)
+  forecasts <- vector(mode="list", length(x))
+  for (i in seq_along(x)){
+    if (sun_up[i]) {
+      forecasts[[i]] <- forecast_class(x[[i]], location, start_time + (i-1)*lubridate::dhours(time_step), n, epsilon)
+    } else {
+      forecasts[[i]] <- NA
+          }
+  }
+  return(forecasts)
+}
+
+#' Look-up function of the forecast class type
+#'
+#' @param scale One of 'site', 'region', 'total'
+#' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @return A function to initialize a forecast of the desired type
+get_forecast_class <- function(scale, method){
+  if (tolower(scale) %in% c("site", "s")){
+    return(prob_1d_site_forecast)
+  } else if (tolower(scale) %in% c("region", "total", "r", "t")){
+    return(switch(tolower(method),
+           "vine" = prob_nd_vine_forecast,
+           "gaussian" = prob_nd_gaussian_forecast,
+           "empirical" = prob_nd_empirical_forecast,
+           "v" = prob_nd_vine_forecast,
+           "g" = prob_nd_gaussian_forecast,
+           "e" = prob_nd_empirical_forecast,
+           stop(paste('Forecast type', method, 'not recognized for multi-dimensional forecasts.', sep=' '))))
+  } else stop(paste('Forecast scale', scale, 'not recognized.', sep=' '))
+}
+
+#' Calculate number of steps in time series forecast
+length.ts_forecast <- function(x) {
+  return(length(x$forecasts))
+}
+
+#' Plot fan plot of the time-series probabilistic forecast
+#'
+#' @param x A ts_forecast object
+#' @param actuals list of realized values (optional)
+plot.ts_forecast <- function(x, ..., actuals=NA) {
+  # Hard-coding this for now -- will need to change if other percentiles are desired
+  probs <- seq(from=0, to=1, by=0.01)
+  plotdata <- matrix(ncol=length(x), nrow=length(probs))
+  for (i in seq_along(x$forecasts)) {
+    if (is.prob_forecast(x$forecasts[[i]])) {
+      plotdata[,i] <- x$forecasts[[i]]$quantiles
+    } else plotdata[,i] <- 0
+  }
+  graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time", ylab="Aggregate power [W]")
+  fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
+               rlab=NULL, start=1, frequency=1/x$time_step)
+  if (all(!is.na(actuals))) {
+    graphics::lines(seq_along(x), actuals, col='gray95', lwd=2)
+  }
+}
+
+#' Plot a time-series of the upper and lower tail CVAR's
+#' @param x A ts_forecast object
+plot_cvar_over_time <- function(x) {
+  y1 <- vector(mode='numeric', length=length(x))
+  y2 <- y1
+  for (i in seq_along(x$forecasts)) {
+    if (is.prob_forecast(x$forecasts[[i]])) {
+      y1[i] <- x$forecasts[[i]]$cvar$low
+      y2[i] <- x$forecasts[[i]]$cvar$high
+    } else {
+      y1[i] <- 0
+      y2[i] <- 0
+    }
+  }
+  colors <- c("darkseagreen4", "darkorange3")
+  graphics::plot((1:length(x))*x$time_step, y2, type = 'b', col=colors[1], xlab='Time', ylab='CVaR [W]')
+  graphics::lines((1:length(x))*x$time_step, y1, type = 'b', col=colors[2])
+  graphics::legend(x="topleft", legend=c("Upper tail", "Lower tail"), bty='n', col=colors, lty=1, lwd=2, y.intersp=2)
+}
+
+#' Get the average estimated CRPS (continuous ranked probability score) for the forecast;
+#' the score at each time point is estimated from sampled data.
+#'
+#' @param ts A ts_forecast object
+#' @param actuals A list of the realized values
+eval_avg_crps <-function(ts, actuals){
+  if (length(actuals) != length(ts)) {stop('Time-series forecast and actual values must have the same length.')}
+  crps <- vector('numeric', length=length(ts))
+  for (i in seq_along(ts)) {
+    if (is.prob_forecast(ts$forecasts[[i]])){
+      crps[i] <- scoringRules::crps_sample(actuals[i], get_samples(ts$forecasts[[i]]))
+    }
+  }
+  return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))
+}
+

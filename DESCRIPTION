@@ -1,0 +1,28 @@
+Package: forecasting
+Type: Package
+Title: Probabilistic Solar Forecsting
+Version: 0.1.0
+Author: person("Kate", "Doubleday", email = "kate.doubleday@nrel.gov",
+                  role = c("aut", "cre"))
+Maintainer: Kate Doubleday <kate.doubleday@nrel.gov>                
+Description: Generate and evaluate probabilistic solar forecasts using 
+    vine, Gaussian, and empirical copulas.
+License: What license is it under?
+Encoding: UTF-8
+LazyData: true
+Suggests: 
+    colorspace,
+    copula,
+    corrplot,
+    EnvStats,
+    fanplot,
+    lubridate,
+    plotly,
+    pracma, 
+    RColorBrewer,
+    repr,
+    testthat,
+    scoringRules,
+    VineCopula,
+    zeallot
+RoxygenNote: 6.1.0
