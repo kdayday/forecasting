@@ -37,13 +37,32 @@ test_that("CVAR calculation throws errors", {
   expect_error(calc_cvar(matrix(c(0,0,0,0), ncol=2), c(0.5, -0.1)))
 })
 
+test_that("Interval score calculation is correct.", {
+  q <- seq(0, 100, 10)
+  names(q) <-sapply(q, FUN=paste, '%', sep='')
+  dat <- list(quantiles=q)
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_equal(calc_is(fake_forecast, actual=15, alpha=0.2), 80)
+  expect_equal(calc_is(fake_forecast, actual=9, alpha=0.2), 80+2/0.2)
+  expect_equal(calc_is(fake_forecast, actual=95, alpha=0.2), 80+2/0.2*5)
+})
+
+test_that("Interval score calculation throws error for bad input", {
+  q <- seq(0, 100, 10)
+  names(q) <-sapply(q, FUN=paste, '%', sep='')
+  dat <- list(quantiles=q)
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_error(calc_is(fake_forecast, actual=95, alpha=10), "Alpha.*")
+  expect_error(calc_is(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
+})
+
 fake_sampling <- function(x,y){
   return(matrix(c(0.5, 0.1, 0.5, 0.1), ncol=2))
 }
-dat <- list(n=2, model=NA, d=2, training_mat=cbind(0:50, seq(from=0, to=100, by=2)))
-fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
 
 test_that('Vine copulas are sampled and added correctly', {
+  dat <- list(n=2, model=NA, d=2, training_mat=cbind(0:50, seq(from=0, to=100, by=2)))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
   with_mock(RVineSim=fake_sampling,
             expect_identical(get_samples(fake_forecast), c(75, 15)))
 })

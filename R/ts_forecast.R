@@ -99,11 +99,11 @@ length.ts_forecast <- function(x) {
 #' @param actuals list of realized values (optional)
 plot.ts_forecast <- function(x, ..., actuals=NA) {
   # Hard-coding this for now -- will need to change if other percentiles are desired
-  probs <- seq(from=0, to=1, by=0.01)
+  probs <- seq(from=0, to=1, length.out = length(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles))
   plotdata <- matrix(ncol=length(x), nrow=length(probs))
   for (i in seq_along(x$forecasts)) {
     if (is.prob_forecast(x$forecasts[[i]])) {
-      plotdata[,i] <- x$forecasts[[i]]$quantiles
+      plotdata[,i] <- unname(x$forecasts[[i]]$quantiles)
     } else plotdata[,i] <- 0
   }
   graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time", ylab="Aggregate power [W]")
@@ -136,6 +136,7 @@ plot_cvar_over_time <- function(x) {
 
 #' Get the average estimated CRPS (continuous ranked probability score) for the forecast;
 #' the score at each time point is estimated from sampled data.
+#' CRPS characterizes calibration and sharpness together
 #'
 #' @param ts A ts_forecast object
 #' @param actuals A list of the realized values
@@ -149,4 +150,45 @@ eval_avg_crps <-function(ts, actuals){
   }
   return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))
 }
+
+#' Get mean absolute error between the forecast median and the actual value
+#'
+#' @param ts A ts_forecast object
+#' @param actuals A list of the realized values
+#' @return the MAE value
+eval_mae <-function(ts, actuals) {
+  medians <- vector('numeric', length=length(ts))
+  for (i in seq_along(ts)) {
+    if (is.prob_forecast(ts$forecasts[[i]])){
+      medians[i] <- ts$forecasts[[i]]$quantiles['50%']
+    }
+  }
+  if (any(is.na(medians[ts$sun_up]))) stop('50% quantile not available')
+  return(mean(abs(medians[ts$sun_up]-actuals[ts$sun_up])))
+}
+
+#' Get average interval score, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
+#' Characterizes sharpness, with a penalty for reliability
+#' NEED TO EXPLORE THIS. UNSURE OF VALUE OF DOING SIMPLE AVERAGE OVER A HETEROSCEDASTIC PROCESS TO CHARACTERIZE SHARPNESS.
+#'
+#' @param ts A ts_forecast object
+#' @param actuals A list of the realized values
+#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+#' @return the average IS value
+eval_avg_is <-function(ts, actuals, alpha) {
+  return(mean(mapply(calc_is, ts$forecasts[ts$sun_up], actuals[ts$sun_up], alpha=alpha)))
+}
+
+#' Plot diagonal line diagram of quantiles + observations
+plot_reliability <- function(ts, actuals) {
+  quants <- vector('numeric', length=length(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles))
+  for (i in seq_along(ts)){
+    if (is.prob_forecast(ts$forecasts[[i]])){
+      indx <- min(which(ts$forecasts[[i]]$quantiles > actuals[i]))
+      quants[indx] <- quants[indx] + 1
+    }
+  }
+  quants <- quants/length(ts$forecasts[ts$sun_up])
+  graphics::plot(seq(0, 1, along.with=quants), seq(0, 1, along.with=quants), type="l", lty=2, xlab="Nominal", ylab="Observed")
+  graphics::lines(seq(0, 1, along.with=quants), cumsum(quants), type='b', lty=1, pch=1)
 

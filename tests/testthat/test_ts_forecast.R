@@ -61,3 +61,17 @@ test_that("Average CRPS calculation throws error on input of wrong length.", {
   fake_ts <- structure(list(forecasts = c(1,2,3)), class = "ts_forecast")
   expect_error(eval_avg_crps(fake_ts, act))
 })
+
+x1 <- structure(list(quantiles=seq(0, 100, 10), n=2), class="prob_forecast")
+names(x1$quantiles) <-sapply(x1$quantiles, FUN=paste, '%', sep='')
+x2 <- structure(list(quantiles=seq(0, 50, 5), n=2), class="prob_forecast")
+names(x2$quantiles) <-sapply(x1$quantiles, FUN=paste, '%', sep='')
+ts <- structure(list(forecasts=list(x1, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
+
+test_that("MAE calculation is correct.", {
+  expect_equal(eval_mae(ts, actuals=c(60, 60, 5)), 15) # error = 10 and 20
+})
+
+test_that("Average interval score calculation is correct.", {
+  expect_equal(eval_avg_is(ts, actuals=c(50, 50, 25), alpha=0.2), 60) # 60=mean(40, 80)
+})

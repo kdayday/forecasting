@@ -11,14 +11,13 @@ length.prob_forecast <- function(x){
 
 #' Calculate forecast quantiles
 #'
-#' @param x A probabilistic forecast
 #' @param samples A column matrix of summed samples
 #' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
-#' @return Estimated quantiles
-calc_quantiles <- function(x, samples,
-                     quantile_density=0.01) {
+#' @return A named numeric vector of estimated quantiles
+calc_quantiles <- function(samples,
+                     quantile_density=0.1) {
   if (quantile_density <= 0 | quantile_density >= 1) stop('Quantile density must be in (0,1).')
-  quantiles <- stats::quantile(samples, probs=seq(0, 1 , quantile_density), type=1, names=FALSE)
+  quantiles <- stats::quantile(samples, probs=seq(0, 1 , quantile_density), type=1, names=TRUE)
   return(quantiles)
 }
 
@@ -36,6 +35,19 @@ calc_cvar <- function(samples, epsilon=c(0.05, 0.95)) {
   return(list('cvar' = list('low'=cvar_low,'high' = cvar_high), 'var'=list('low'=var_low, 'high'=var_high)))
 }
 
+#' Calculate interval score for an interval from alpha/2 to 1-alpha/2. Negatively oriented
+#' First term: sharpness, second and third terms: penalty for reliability.
+#'
+#' @param x A ts_forecast object
+#' @param actual The realized value
+#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+calc_is <- function(x, actual, alpha) {
+  if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
+  l <- unname(x$quantiles[paste(alpha/2*100, '%', sep='')])
+  u <- unname(x$quantiles[paste((1-alpha/2)*100, '%', sep='')])
+  if (is.na(l) | is.na(u)) stop("Requested quantile is not in the forecast's list of quantiles.")
+  is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
+}
 
 #' Plot probabilistic forecast's estimated pdf (with kde)
 #' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
@@ -101,7 +113,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
 
   # Complete probabilistic forecast by sampling and aggregating
   samples <- get_samples(x)
-  x$quantiles <- calc_quantiles(x, samples)
+  x$quantiles <- calc_quantiles(samples)
   results <- calc_cvar(samples, epsilon)
   x$cvar <- results$cvar
   x$var<- results$var
