@@ -188,7 +188,7 @@ plot_reliability <- function(ts, actuals) {
       quants[indx] <- quants[indx] + 1
     }
   }
-  quants <- quants/length(ts$forecasts[ts$sun_up])
-  graphics::plot(seq(0, 1, along.with=quants), seq(0, 1, along.with=quants), type="l", lty=2, xlab="Nominal", ylab="Observed")
-  graphics::lines(seq(0, 1, along.with=quants), cumsum(quants), type='b', lty=1, pch=1)
-
+quants <- quants/length(ts$forecasts[ts$sun_up])
+graphics::plot(seq(0, 1, along.with=quants), seq(0, 1, along.with=quants), type="l", lty=2, xlab="Nominal", ylab="Observed")
+graphics::lines(seq(0, 1, along.with=quants), cumsum(quants), type='b', lty=1, pch=1)
+}
