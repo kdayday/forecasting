@@ -68,8 +68,22 @@ x2 <- structure(list(quantiles=seq(0, 50, 5), n=2), class="prob_forecast")
 names(x2$quantiles) <-sapply(x1$quantiles, FUN=paste, '%', sep='')
 ts <- structure(list(forecasts=list(x1, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
 
+test_that("Time series of values at certain quantile is extracted correctly.", {
+  expect_equal(get_quantile_time_series(ts, 20), c(20, 20, 10))
+})
+
+test_that("Extraction of time-series at certain quantile throws error.", {
+  expect_error(get_quantile_time_series(ts, 2))
+})
+
+test_that("Brier score is as expected", {
+  with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10)),
+    expect_equal(eval_brier(ts, actuals=c(0, 40, 5), 80), 0.68))
+})
+
 test_that("MAE calculation is correct.", {
-  expect_equal(eval_mae(ts, actuals=c(60, 60, 5)), 15) # error = 10 and 20
+  with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25)),
+    expect_equal(eval_mae(ts, actuals=c(60, 60, 5)), 15)) # error = 10 and 20
 })
 
 test_that("Average interval score calculation is correct.", {

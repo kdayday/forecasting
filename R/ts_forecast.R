@@ -114,6 +114,22 @@ plot.ts_forecast <- function(x, ..., actuals=NA) {
   }
 }
 
+#' Get a time-series of the forecast value at a particular quantile
+#' @param x A ts_forecast object
+#' @param alpha Quantile of interest, numeric [0, 100]
+#' @return Numeric vector
+get_quantile_time_series <- function(x, alpha) {
+  q <- paste(alpha, '%', sep='')
+  timeseries <- vector('numeric', length=length(x))
+  for (i in seq_along(x)) {
+    if (is.prob_forecast(x$forecasts[[i]])){
+      timeseries[i] <- x$forecasts[[i]]$quantiles[q]
+    }
+  }
+  if (any(is.na(timeseries[x$sun_up]))) stop(paste(q,'quantile not available'))
+  return(timeseries)
+}
+
 #' Plot a time-series of the upper and lower tail CVAR's
 #' @param x A ts_forecast object
 plot_cvar_over_time <- function(x) {
@@ -151,19 +167,28 @@ eval_avg_crps <-function(ts, actuals){
   return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))
 }
 
+#' Get Brier score at a certain probability of exceedance
+#' This is calculated with a constant probability threshold, rather than a constant value threshold
+#' I THINK THIS NEEDS TO BE EXPLORED, BECAUSE I DON'T KNOW THE EFFECT OF THE CONSTANT PROBABILITY THRESHOLD.
+#'
+#' @param ts A ts_forecast object
+#' @param actuals A list of the realized values
+#' @param alpha Threshold probability of exceedance, numeric [0,100]
+#' @return the Brier score
+eval_brier <- function(ts, actuals, alpha) {
+  if (alpha < 0 | alpha > 100) stop(paste("alpha must be [0,1], given ", alpha, '.', sep=''))
+  thresholds <- get_quantile_time_series(ts, 100-alpha)
+  indicator <- as.integer(actuals[ts$sun_up] >= thresholds[ts$sun_up])
+  return(sum(((1-alpha/100)-indicator)^2))
+}
+
 #' Get mean absolute error between the forecast median and the actual value
 #'
 #' @param ts A ts_forecast object
 #' @param actuals A list of the realized values
 #' @return the MAE value
 eval_mae <-function(ts, actuals) {
-  medians <- vector('numeric', length=length(ts))
-  for (i in seq_along(ts)) {
-    if (is.prob_forecast(ts$forecasts[[i]])){
-      medians[i] <- ts$forecasts[[i]]$quantiles['50%']
-    }
-  }
-  if (any(is.na(medians[ts$sun_up]))) stop('50% quantile not available')
+  medians <- get_quantile_time_series(ts, 50)
   return(mean(abs(medians[ts$sun_up]-actuals[ts$sun_up])))
 }
 
