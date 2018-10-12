@@ -23,6 +23,6 @@ Suggests:
     repr,
     testthat,
     scoringRules,
-    VineCopula,
+    rvinecopulib,
     zeallot
 RoxygenNote: 6.1.0

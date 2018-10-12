@@ -1,7 +1,7 @@
 context("Test forecasting context")
 
 library(forecasting)
-library(VineCopula)
+library(rvinecopulib)
 
 mock_samp <- function(x) "A sample"
 mock_pd <- function(x,y) "A pd"
@@ -10,7 +10,7 @@ epsilon=c(0.05, 0.95)
 
 test_that("Vine copula forecast is initialized correctly", {
   with_mock(get_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
-            pobs=function(x) NA, RVineStructureSelect=function(x, indeptest, familyset) NA,
+            pseudo_obs=function(x) NA, vinecop=function(x, ...) NA,
   OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  3000, epsilon))
   expect_identical(OUT$cvar$low, 'low')
   expect_true(is.prob_forecast((OUT)))
@@ -19,7 +19,7 @@ test_that("Vine copula forecast is initialized correctly", {
 
 test_that("Vine copula forecast initialization throws errors", {
   with_mock(get_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
-            pobs=function(x) NA, RVineStructureSelect=function(x, indeptest, familyset) NA,
+            pseudo_obs=function(x) NA, vinecop=function(x, ...) NA,
             expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  'three', epsilon)))
   expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  3000, epsilon))
 })
@@ -63,6 +63,6 @@ fake_sampling <- function(x,y){
 test_that('Vine copulas are sampled and added correctly', {
   dat <- list(n=2, model=NA, d=2, training_mat=cbind(0:50, seq(from=0, to=100, by=2)))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
-  with_mock(RVineSim=fake_sampling,
+  with_mock(rvinecop=fake_sampling,
             expect_identical(get_samples(fake_forecast), c(75, 15)))
 })

@@ -98,7 +98,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
 
-  model <- VineCopula::RVineStructureSelect(VineCopula::pobs(dat), indeptest=TRUE, familyset=c(0,1,2,3,4,5,6))
+  model <- rvinecopulib::vinecop(rvinecopulib::pseudo_obs(dat), family_set="all")
 
   # Initialize probabilistic forecast
   dat <- list(training_mat = dat,
@@ -125,7 +125,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
 #'
 #' @return A column matrix of aggregate powers
 get_samples.prob_nd_vine_forecast <- function(x) {
-  samples.u <- VineCopula::RVineSim(x$n, x$model)
+  samples.u <- rvinecopulib::rvinecop(x$n, x$model)
   samples.xs <- matrix(nrow = x$n, ncol = length(x))
   for (i in 1:length(x)){
     samples.xs[,i] <- stats::quantile(x$training_mat[,i], samples.u[,i], type=1, names=FALSE)
