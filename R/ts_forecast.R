@@ -71,11 +71,14 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 #' Look-up function of the forecast class type
 #'
 #' @param scale One of 'site', 'region', 'total'
-#' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @param method One of 'rank' if scale is 'site', else one of gaussian', 'empirical', 'vine'
 #' @return A function to initialize a forecast of the desired type
 get_forecast_class <- function(scale, method){
   if (tolower(scale) %in% c("site", "s")){
-    return(prob_1d_site_forecast)
+    return(switch(tolower(method),
+                  "rank" = prob_1d_rank_forecast,
+                  "r" = prob_1d_rank_forecast,
+                  stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' '))))
   } else if (tolower(scale) %in% c("region", "total", "r", "t")){
     return(switch(tolower(method),
            "vine" = prob_nd_vine_forecast,

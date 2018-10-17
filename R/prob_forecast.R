@@ -191,22 +191,39 @@ get_samples.prob_nd_empirical_forecast <- function(x) {
 #------------------------------------------------------------------------------
 
 
-#' Initialize a univariate probabilistic power forecast for a specific time point.
+#' Initialize a univariate probabilistic power forecast for a specific time point by ranking ensemble members.
 #' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
 #'
-#' @param dat A matrix of training data, [ntrain x 1]
+#' @param dat A matrix of ensemble members, [ntrain x 1]
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @param n An integer, number of copula samples to take
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_1d_site_forecast <- function(dat, location, time,
-                                       n=3000, epsilon=c(0.05, 0.95)) {
+prob_1d_rank_forecast <- function(dat, location, time, epsilon=c(0.05, 0.95)) {
   if (dim(dat)[2] > 1) stop('Training data must be of dimensions [ntrain x 1] for univariate forecasts.')
+
+  # Initialize probabilistic forecast
+  dat <- list(location = location,
+              time = time,
+              d = 1,
+              n=n,
+              epsilon=epsilon
+  )
+  x <- structure(dat, class = c("prob_forecast", "prob_1d_rank_forecast"))
+
+  x$quantiles <- calc_quantiles(dat)
+
+  return(x)
+}
+
+#' Sample the probabilistic forecast
+#'
+#' @param x A prob_forecast object
+#' @return A column matrix of aggregate powers
+get_samples.prob_1d_rank_forecast <- function(x) {
   stop('Not implemented')
 }
 
-#' Sample the empirical copula model and sum to calculate samples of the univariate, aggregate power forecast
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
