@@ -16,13 +16,14 @@ Suggests:
     corrplot,
     EnvStats,
     fanplot,
+    KernSmooth,
     lubridate,
     plotly,
     pracma, 
     RColorBrewer,
     repr,
+    rvinecopulib,
     testthat,
     scoringRules,
-    rvinecopulib,
     zeallot
 RoxygenNote: 6.1.0
