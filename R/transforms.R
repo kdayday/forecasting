@@ -46,7 +46,9 @@ cdf_kde <- function(x, ...,
   cdf <- cdf_raw/max(cdf_raw)
   dat <- list('x'=pdf$x,
               'pdf'=pdf$y,
-              'cdf'=cdf)
+              'cdf'=cdf,
+              'xmin' = min(pdf$x),
+              'xmax' = max(pdf$x))
   x <- structure(dat, class = c("cdf_kde"))
   return(x)
 }
@@ -60,6 +62,7 @@ is.cdf_kde <- function(x) inherits(x, "cdf_kde")
 #' @param u A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the uniform to variable domain
 from_uniform.cdf_kde <- function(c, u) {
+  if (any(u<0 | u>1)) stop("Evaluation point(s) for uniform transform must be in [0,1].")
  return(approx(c$cdf, c$x, xout=u, rule=2)$y)
 }
 
@@ -69,7 +72,8 @@ from_uniform.cdf_kde <- function(c, u) {
 #' @param x A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the variable to uniform domain
 to_uniform.cdf_kde <- function(c, x) {
-  return(approx(c$x, c$cdf, xout=x, rule=2)$y)
+  if (any(x<c$xmin | x >c$xmax)) warning("Evaluation point(s) beyond the variable range of the CDF.  ")
+  return(approx(c$x, c$cdf, xout=x, yleft = 0, yright = 1)$y)
 }
 
 #' Transform from variable to probability density
@@ -78,7 +82,8 @@ to_uniform.cdf_kde <- function(c, x) {
 #' @param x A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the variable to probability density
 to_probability.cdf_kde <- function(c, x) {
-  return(approx(c$x, c$pdf, xout=x, rule=2)$y)
+  if (any(x<c$xmin | x >c$xmax)) warning("Evaluation point(s) beyond the variable range of the PDF.  ")
+  return(approx(c$x, c$pdf, xout=x, yleft = 0, yright = 0)$y)
 }
 
 #' Plot a KDE CDF transform
@@ -89,27 +94,11 @@ plot.cdf_kde <- function(c) {
        ylab='Uniform domain U=F(X)')
 }
 
-#' Plot a KDE PDF
+#' Plot a KDE PDFobject
 #'
-#' @param c A cdf_kde object
+#' @param c A cdf_kde
 plot_pdf <- function(cdf) {
   plot(cdf$x, cdf$pdf, main="KDE PDF", xlab="Variable domain X", ylab='Relative frequency')
-}
-
-#' Get the minimum value of a CDF marginal transform in the variable domain
-#'
-#' @param c A cdf_kde object
-#' @return minimum value in the variable domain
-min_x <- function(cdf){
-  return(min(cdf$x))
-}
-
-#' Get the maximum value of a CDF marginal transform in the variable domain
-#'
-#' @param c A cdf_kde object
-#' @return maximum value in the variable domain
-max_x <- function(cdf){
-  return(max(cdf$x))
 }
 
 # -----------------------------------------------------------------------------------------------------
