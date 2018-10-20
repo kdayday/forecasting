@@ -1,20 +1,27 @@
 
-#' Register generic inverse transform function
+#' Register generic variable-to-uniform domain transform function
 #' @param x An object of one of the cdf transform classes
-inverse_transform <- function(cdf, x, ...) UseMethod('inverse_transform')
+to_uniform <- function(cdf, x, ...) UseMethod('to_uniform')
 
+#' Register generic uniform-to-variable domain transform function
+#' @param x An object of one of the cdf transform classes
+from_uniform <- function(cdf, x, ...) UseMethod('from_uniform')
+
+#' Register generic variable-to-probability density transform function
+#' @param x An object of one of the cdf transform classes
+to_probability <- function(cdf, x, ...) UseMethod('to_probability')
 
 #' Look-up function of transform functions to/from uniform domain
 #'
-#' @param transform_method 'One of 'empirical', 'kde'
 #' @param x Input data
-#' @param save (optional) Boolean to skip saving input data for empirical transforms
+#' @param transform_method 'One of 'empirical', 'kde', default to 'kde'
 #' @return list of 'to_uniform' and 'from_uniform' functions
-get_transform <- function(transform_method, x, save=TRUE){
+get_transform <- function(x, transform_method='kde'){
   if (!(tolower(transform_method) %in% c("kde", "empirical"))) stop(paste("marginal.transform must be 'kde' or 'empirical'. Given: ", transform_method, sep=''))
+  if (tolower(transform_method) == 'empirical') {warning("Empirical transform functionality is incomplete.")}
   return(switch(tolower(transform_method),
                           "kde" = cdf_kde(x),
-                          "empirical" = if (save) {cdf_em(x)} else {cdf_em(NULL)}))
+                          "empirical" = cdf_em(x)))
 }
 
 # -------------------------------------------------------------------------------------------------------------
@@ -49,35 +56,58 @@ is.cdf_kde <- function(x) inherits(x, "cdf_kde")
 
 #' Inverse transform from uniform to variable domain
 #'
-#' @param cdf_kde A cdf_kde object
+#' @param c A cdf_kde object
 #' @param u A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the uniform to variable domain
-inverse_transform.cdf_kde <- function(cdf_kde, u) {
- return(approx(cdf_kde$cdf, cdf_kde$x, xout=u, rule=2)$y)
+from_uniform.cdf_kde <- function(c, u) {
+ return(approx(c$cdf, c$x, xout=u, rule=2)$y)
 }
 
 #' Transform from variable to uniform domain
 #'
-#' @param cdf A cdf_kde object
+#' @param c A cdf_kde object
 #' @param x A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the variable to uniform domain
-transform.cdf_kde <- function(cdf, x) {
-  return(approx(cdf$x, cdf$cdf, xout=x, rule=2)$y)
+to_uniform.cdf_kde <- function(c, x) {
+  return(approx(c$x, c$cdf, xout=x, rule=2)$y)
 }
 
-plot.cdf_kde <- function(cdf) {
-  plot(cdf$x, cdf$cdf, main="KDE CDF", xlab=expression(paste("Variable domain X=", F^-1, "(", U, ")", sep = "")),
+#' Transform from variable to probability density
+#'
+#' @param c A cdf_kde object
+#' @param x A vector of evaluation points to transform
+#' @return A vector linearly interpolated from the variable to probability density
+to_probability.cdf_kde <- function(c, x) {
+  return(approx(c$x, c$pdf, xout=x, rule=2)$y)
+}
+
+#' Plot a KDE CDF transform
+#'
+#' @param c A cdf_kde object
+plot.cdf_kde <- function(c) {
+  plot(c$x, c$cdf, main="KDE CDF", xlab=expression(paste("Variable domain X=", F^-1, "(", U, ")", sep = "")),
        ylab='Uniform domain U=F(X)')
 }
 
+#' Plot a KDE PDF
+#'
+#' @param c A cdf_kde object
 plot_pdf <- function(cdf) {
   plot(cdf$x, cdf$pdf, main="KDE PDF", xlab="Variable domain X", ylab='Relative frequency')
 }
 
+#' Get the minimum value of a CDF marginal transform in the variable domain
+#'
+#' @param c A cdf_kde object
+#' @return minimum value in the variable domain
 min_x <- function(cdf){
   return(min(cdf$x))
 }
 
+#' Get the maximum value of a CDF marginal transform in the variable domain
+#'
+#' @param c A cdf_kde object
+#' @return maximum value in the variable domain
 max_x <- function(cdf){
   return(max(cdf$x))
 }
@@ -101,7 +131,7 @@ is.cdf_em <- function(x) inherits(x, "cdf_em")
 #' @param cdf_em A cdf_em object
 #' @param u A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the uniform to variable domain
-inverse_transform.cdf_em <- function(cdf_em, u) {
+from_uniform.cdf_em <- function(cdf_em, u) {
   return(stats::quantile(cdf_em$samples, u, type=4, names=FALSE))
 }
 
@@ -110,10 +140,22 @@ inverse_transform.cdf_em <- function(cdf_em, u) {
 #' @param cdf_em A cdf_em object
 #' @param x A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the variable to uniform domain
-transform.cdf_em <- function(cdf_em, x) {
+to_uniform.cdf_em <- function(cdf_em, x) {
   return(rvinecopulib::pseudo_obs(x))
 }
 
+#' Transform from variable to uniform domain
+#'
+#' @param cdf_em A cdf_em object
+#' @param x A vector of evaluation points to transform
+#' @return A vector linearly interpolated from the variable to uniform domain
+to_probability.cdf_em <- function(cdf_em, x) {
+  stop('Not implemented. Just use KDE of probability density.')
+}
+
+#' Plot an empirical CDF transform
+#'
+#' @param c A cdf_em object
 plot.cdf_em <- function(cdf_em) {
   plot(ecdf(cdf_em$samples), main="Empirical CDF", xlab=expression(paste("Variable domain X=", F^-1, "(", U, ")", sep = "")),
        ylab='Uniform domain U=F(X)')

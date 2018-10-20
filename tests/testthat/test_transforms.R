@@ -1,6 +1,7 @@
 context("Test forecasting context")
 
 library(forecasting)
+library(KernSmooth)
 
 
 test_that('KDE of CDF is correct', {
@@ -14,14 +15,13 @@ test_that('KDE of CDF is correct', {
 
 
 test_that("Get transform throws error.", {
-  expect_error(get_transform(transform_method='norm', 1:10))
+  expect_error(get_transform(1:10, transform_method='norm'))
 })
 
 test_that("Get transform lookup is correct.", {
   with_mock(cdf_kde=function(...) return('cdf_kde'),
-    expect_equal(get_transform(transform_method='kde', 1:10), 'cdf_kde'))
-  with_mock(cdf_em=function(x) return(x),
-            expect_equal(get_transform(transform_method='empirical', 1:10), 1:10))
-  with_mock(cdf_em=function(x) return(x),
-            expect_true(is.null(get_transform(transform_method='empirical', 1:10, save=FALSE))))
+    expect_equal(get_transform(1:10), 'cdf_kde'))
+  expect_warning(  with_mock(cdf_em=function(x) return(x),
+                             OUT <- get_transform(1:10, transform_method='empirical')))
+  expect_equal(OUT, 1:10)
 })
