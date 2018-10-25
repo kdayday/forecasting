@@ -90,18 +90,26 @@ get_samples <- function(x) {
 #' @param dat A matrix of training data [ntrain x nsites]
 #' @param location A string
 #' @param time A lubridate time stamp
+#' @param training_transform_type One of "kde", "empirical" for transform of training data into uniform domain (default empirical)
+#' @param results_transform_type One of "kde", "empirical" for transform of copula results back into variable domain (default kde)
 #' @param n An integer, number of copula samples to take
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_nd_vine_forecast <- function(dat, location, time,
-                                  n=3000, epsilon=c(0.05, 0.95)) {
+                                  training_transform_type="empirical", results_transform_type='kde', n=3000, epsilon=c(0.05, 0.95)) {
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
 
-  model <- rvinecopulib::vinecop(rvinecopulib::pseudo_obs(dat), family_set="all")
+  training_transforms <- apply(dat, MARGIN = 2, FUN=get_transform, transform_method=training_transform_type)
+  # Results transforms must be subsequently updated if desired
+  results_transforms <- apply(dat, MARGIN = 2, FUN=get_transform, transform_method=results_transform_type)
+
+  uniform_dat <- mapply(function(n, t) {to_uniform(t, dat[,n])}, colnames(dat, do.NULL=FALSE), training_transforms)
+  model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
 
   # Initialize probabilistic forecast
-  dat <- list(training_mat = dat,
+  dat <- list(training_transforms = training_transforms,
+              results_transforms = results_transforms,
               location = location,
               time = time,
               model = model,
@@ -128,7 +136,7 @@ get_samples.prob_nd_vine_forecast <- function(x) {
   samples.u <- rvinecopulib::rvinecop(x$n, x$model)
   samples.xs <- matrix(nrow = x$n, ncol = length(x))
   for (i in 1:length(x)){
-    samples.xs[,i] <- stats::quantile(x$training_mat[,i], samples.u[,i], type=1, names=FALSE)
+    samples.xs[,i] <- from_uniform(x$results_transforms, samples.u[,i])
   }
   samples.x <- rowSums(samples.xs)
   return(samples.x)

@@ -10,8 +10,9 @@ epsilon=c(0.05, 0.95)
 
 test_that("Vine copula forecast is initialized correctly", {
   with_mock(get_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
-            pseudo_obs=function(x) NA, vinecop=function(x, ...) NA,
-  OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  3000, epsilon))
+            pseudo_obs=function(x) NA, vinecop=function(x, ...) NA, get_transform=function(...) "A transform",
+            to_uniform=function(...) "To uniform",
+  OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', time=1,  n=3000, epsilon=epsilon))
   expect_identical(OUT$cvar$low, 'low')
   expect_true(is.prob_forecast((OUT)))
   expect_equal(length(OUT), 2)
@@ -19,9 +20,9 @@ test_that("Vine copula forecast is initialized correctly", {
 
 test_that("Vine copula forecast initialization throws errors", {
   with_mock(get_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
-            pseudo_obs=function(x) NA, vinecop=function(x, ...) NA,
-            expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  'three', epsilon)))
-  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  3000, epsilon))
+            vinecop=function(x, ...) NA,
+            expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three', epsilon=epsilon)))
+  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  n=3000, epsilon=epsilon))
 })
 
 test_that("CVAR estimate is correct", {
@@ -57,12 +58,16 @@ test_that("Interval score calculation throws error for bad input", {
 })
 
 fake_sampling <- function(x,y){
-  return(matrix(c(0.5, 0.1, 0.5, 0.1), ncol=2))
+  return(matrix(c(0.5, 0.1, 0.5, 0.2), ncol=2))
 }
 
-test_that('Vine copulas are sampled and added correctly', {
-  dat <- list(n=2, model=NA, d=2, training_mat=cbind(0:50, seq(from=0, to=100, by=2)))
+fake_uniform <- function(x,y){
+  return(y*10)
+}
+
+test_that('Vine copulas samples are added correctly', {
+  dat <- list(n=2, model=NA, d=2, results_transforms=c(10,10))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
-  with_mock(rvinecop=fake_sampling,
-            expect_identical(get_samples(fake_forecast), c(75, 15)))
+  with_mock(rvinecop=fake_sampling, from_uniform=fake_uniform,
+            expect_identical(get_samples(fake_forecast), c(10, 3)))
 })
