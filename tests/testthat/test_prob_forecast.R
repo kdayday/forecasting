@@ -1,27 +1,38 @@
 context("Test forecasting context")
 
 library(forecasting)
-library(VineCopula)
+library(rvinecopulib)
 
 mock_samp <- function(x) "A sample"
 mock_pd <- function(x,y) "A pd"
 mock_eval <- function(x,y,z) list(cvar = list(low='low', high='high'), var=list(low=0, high=1))
 epsilon=c(0.05, 0.95)
 
-test_that("Vine copula forecast is initialized correctly", {
+test_that("Basic vine copula forecast initialization is correct.", {
   with_mock(get_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
-            pobs=function(x) NA, RVineStructureSelect=function(x, indeptest, familyset) NA,
-  OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  3000, epsilon))
+            vinecop=function(x, ...) NA, marg_transform=function(...) "A transform",
+            to_uniform=function(...) "To uniform",
+  OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', time=1,  n=3000, epsilon=epsilon))
   expect_identical(OUT$cvar$low, 'low')
   expect_true(is.prob_forecast((OUT)))
   expect_equal(length(OUT), 2)
 })
 
+test_that("Marginal distribution optional arguments are passed through.", {
+  with_mock(marg_transform=function(x, method='default', anoption=NA) return(list(method=method, anoption=anoption)),
+            to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
+            get_samples= mock_samp, calc_cvar=mock_eval,
+            out <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'TX', 'time',
+                                  training_transform_type="geenens", results_transform_type='geenens', anoption=20))
+  expect_equal(out$training_transforms[[1]]$anoption, 20)
+  expect_equal(out$training_transforms[[1]]$method, 'geenens')
+})
+
 test_that("Vine copula forecast initialization throws errors", {
   with_mock(get_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
-            pobs=function(x) NA, RVineStructureSelect=function(x, indeptest, familyset) NA,
-            expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  'three', epsilon)))
-  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  3000, epsilon))
+            vinecop=function(x, ...) NA,
+            expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three', epsilon=epsilon)))
+  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  n=3000, epsilon=epsilon))
 })
 
 test_that("CVAR estimate is correct", {
@@ -57,12 +68,15 @@ test_that("Interval score calculation throws error for bad input", {
 })
 
 fake_sampling <- function(x,y){
-  return(matrix(c(0.5, 0.1, 0.5, 0.1), ncol=2))
+  return(matrix(c(0.5, 0.1, 0.5, 0.2), ncol=2))
+}
+fake_uniform <- function(x,y){
+  return(x*y)
 }
 
-test_that('Vine copulas are sampled and added correctly', {
-  dat <- list(n=2, model=NA, d=2, training_mat=cbind(0:50, seq(from=0, to=100, by=2)))
+test_that('Vine copulas samples are added correctly', {
+  dat <- list(n=2, model=NA, d=2, results_transforms=list(5,10))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
-  with_mock(RVineSim=fake_sampling,
-            expect_identical(get_samples(fake_forecast), c(75, 15)))
+  with_mock(rvinecop=fake_sampling, from_uniform=fake_uniform,
+            expect_identical(get_samples(fake_forecast), c(7.5, 2.5)))
 })

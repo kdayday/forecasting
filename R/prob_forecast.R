@@ -52,23 +52,24 @@ calc_is <- function(x, actual, alpha) {
 #' Plot probabilistic forecast's estimated pdf (with kde)
 #' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
 #' from the kde results.
-plot.prob_forecast <- function(x, ...) {
+plot.prob_forecast <- function(x, cvar=FALSE) {
   # Assume data is power or irradiance and must be non-negative
   epdf <- stats::density(get_samples(x), from=0)
   plot(epdf, xlab='Power [W]', ylab='Probability',
        main='Estimated probability distribution', sub = paste("Location: ", x$location, ", Time:", x$time))
 
-  # Color in tails above/below desired epsilon's
-  i1 <- min(which(epdf$x >= x$var$low))
-  i2 <- max(which(epdf$x <= x$var$high))
-  graphics::lines(rep(x$var$low,times=2), c(0, epdf$y[i1]), col='black')
-  graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
-  graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(x$var$low,2), "\nCVaR: ", round(x$cvar$low,2)), pos=3)
+  if (cvar){# Color in tails above/below desired epsilon's
+    i1 <- min(which(epdf$x >= x$var$low))
+    i2 <- max(which(epdf$x <= x$var$high))
+    graphics::lines(rep(x$var$low,times=2), c(0, epdf$y[i1]), col='black')
+    graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
+    graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(x$var$low,2), "\nCVaR: ", round(x$cvar$low,2)), pos=3)
 
-  graphics::lines(rep(x$var$high,times=2), c(0, epdf$y[i2]), col='black')
-  last <- length(epdf$x)
-  graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
-  graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(x$var$high,2), "\nCVaR: ", round(x$cvar$high,2)), pos=3)
+    graphics::lines(rep(x$var$high,times=2), c(0, epdf$y[i2]), col='black')
+    last <- length(epdf$x)
+    graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
+    graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(x$var$high,2), "\nCVaR: ", round(x$cvar$high,2)), pos=3)
+  }
 }
 
 #' Check probabilistic forecast class
@@ -90,18 +91,29 @@ get_samples <- function(x) {
 #' @param dat A matrix of training data [ntrain x nsites]
 #' @param location A string
 #' @param time A lubridate time stamp
+#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "method")
+#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "method")
 #' @param n An integer, number of copula samples to take
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+#' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_nd_vine_forecast <- function(dat, location, time,
-                                  n=3000, epsilon=c(0.05, 0.95)) {
+                                  training_transform_type="geenens", results_transform_type='geenens', n=3000,
+                                  epsilon=c(0.05, 0.95), ...) {
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
+  if (class(dat)!='matrix') stop('Input data must be a matrix')
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
 
-  model <- VineCopula::RVineStructureSelect(VineCopula::pobs(dat), indeptest=TRUE, familyset=c(0,1,2,3,4,5,6))
+  training_transforms <- apply(dat, MARGIN = 2, FUN=purrr::partial(marg_transform, method=training_transform_type), ...)
+  # Results transforms must be subsequently updated if desired
+  results_transforms <- apply(dat, MARGIN = 2, FUN=purrr::partial(marg_transform, method=results_transform_type), ...)
+
+  uniform_dat <- mapply(function(n, t) {to_uniform(t, dat[,n])}, colnames(dat, do.NULL=FALSE), training_transforms)
+  model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
 
   # Initialize probabilistic forecast
-  dat <- list(training_mat = dat,
+  dat <- list(training_transforms = training_transforms,
+              results_transforms = results_transforms,
               location = location,
               time = time,
               model = model,
@@ -125,10 +137,10 @@ prob_nd_vine_forecast <- function(dat, location, time,
 #'
 #' @return A column matrix of aggregate powers
 get_samples.prob_nd_vine_forecast <- function(x) {
-  samples.u <- VineCopula::RVineSim(x$n, x$model)
+  samples.u <- rvinecopulib::rvinecop(x$n, x$model)
   samples.xs <- matrix(nrow = x$n, ncol = length(x))
   for (i in 1:length(x)){
-    samples.xs[,i] <- stats::quantile(x$training_mat[,i], samples.u[,i], type=1, names=FALSE)
+    samples.xs[,i] <- from_uniform(x$results_transforms[[i]], samples.u[,i])
   }
   samples.x <- rowSums(samples.xs)
   return(samples.x)
