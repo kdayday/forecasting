@@ -81,6 +81,12 @@ get_1d_samples <- function(x) {
     UseMethod("get_1d_samples",x)
 }
 
+#' Register generic joint density function
+#' @param x A Gaussian or vine copula n-dimension prob_forecast object
+get_joint_density_grid <- function(x, ...) {
+  UseMethod("get_joint_density_grid",x)
+}
+
 # Methods for aggregate probabilistic forecast class using vine copulas
 #------------------------------------------------------------------------------
 
@@ -146,6 +152,46 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
   return(samples.x)
 }
 
+
+#' Estimate the joint probability density
+#'
+#' @param x A prob_nd_vine_forecast object
+#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
+#' @return an joint probability density array
+get_joint_density_grid.prob_nd_vine_forecast <- function(x, k=100) {
+  # Get evaluation grid
+  eval_points <- get_variable_domain_grid(x, k)
+
+  # Calculate copula density
+  eval_points_copula <- mapply(FUN=function(c, n) {to_uniform(c, eval_points[,n])}, x$results_transforms,
+                               colnames(eval_points, do.NULL=FALSE))
+  copula_density <- rvinecopulib::dvinecop(eval_points_copula, x$model)
+
+  # Calculate the marginal densities
+  dmarg <- mapply(FUN=function(c, n) {to_probability(c, eval_points[,n])}, x$results_transforms,
+                  colnames(eval_points, do.NULL=FALSE))
+
+  # Calculate joint density as product the copula density and marginal densities
+  pdf <- copula_density * apply(dmarg, 1 , prod) # multiply across rows
+  return(list('grid_points'=eval_points, 'd'=pdf))
+}
+
+#' Get a grid of evaluation points in the variable domain, based on the range of the marginal distribution estimation
+#'
+#' @param x A prob_nd_vine_forecast object
+#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
+#' @return a grid of points size k^n
+get_variable_domain_grid <- function(x, k) {
+  if (length(k)==1){
+    k <- rep(k, times=length(x))
+  } else if (length(k) != length(x)) stop('Bad input. k must be length 1 or of same dimension as the forecast')
+  if (any(k < 2)) stop('Bad input. All values in k must be at least 2.')
+
+  grid_list <-mapply(x$results_transforms, k, FUN=function(tr, k) {seq(tr$xmin, tr$xmax, length.out=k)}, SIMPLIFY = FALSE)
+  pts <- expand.grid(grid_list)
+  return(pts)
+}
+
 # Methods for aggregate probabilistic forecast class using Gaussian copulas
 #------------------------------------------------------------------------------
 
@@ -169,6 +215,16 @@ prob_nd_gaussian_forecast <- function(dat, location, time,
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
 get_1d_samples.prob_nd_gaussian_forecast <- function(x) {
+  stop('Not implemented')
+}
+
+
+#' Estimate the joint probability density
+#'
+#' @param x A prob_nd_gaussian_forecast object
+#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
+#' @return an joint probability density array
+get_joint_density_grid.prob_nd_gaussian_forecast <- function(x, k=100) {
   stop('Not implemented')
 }
 

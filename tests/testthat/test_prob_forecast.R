@@ -80,3 +80,38 @@ test_that('Vine copulas samples are added correctly', {
   with_mock(rvinecop=fake_sampling, from_uniform=fake_uniform,
             expect_identical(get_1d_samples(fake_forecast), c(7.5, 2.5)))
 })
+
+test_that('get_variable_domain_grid calc is correct with one dimension length', {
+  dat <- list(d=3, results_transforms=list(list('xmin'=1, 'xmax'=3),
+                                                          list('xmin'=10, 'xmax'=30),
+                                                          list('xmin'=100, 'xmax'=300)) )
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  out<- get_variable_domain_grid(fake_forecast, k=3)
+  expect_equal(get_variable_domain_grid(fake_forecast, k=3), expand.grid(c(1, 2, 3), c(10, 20, 30), c(100, 200, 300)))
+})
+
+test_that('get_variable_domain_grid calc is correct with unique dimension lengths', {
+  dat <- list(d=3, results_transforms=list(list('xmin'=1, 'xmax'=3),
+                                           list('xmin'=10, 'xmax'=30),
+                                           list('xmin'=100, 'xmax'=300)) )
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_equal(get_variable_domain_grid(fake_forecast, k=c(2, 3, 5)), expand.grid(c(1, 3), c(10, 20, 30), c(100, 150, 200, 250, 300)))
+})
+
+test_that('get_variable_domain_grid throws errors on bad input', {
+  fake_forecast <- structure(list(d=3), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_error(get_variable_domain_grid(fake_forecast, k=1), "Bad input*") # Too few samples
+  expect_error(get_variable_domain_grid(fake_forecast, k=c(2, 2)), "Bad input*") # incorrect number of inputs
+})
+
+test_that('get_joint_density_grid calc is correct', {
+  dat <- list(n=3, model=NA, d=2, results_transforms=list(1, 10, 100))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  with_mock(dvinecop=function(x, c) return(rowSums(x)),
+            to_uniform=function(c, x) return(x/10),
+            to_probability=function(c,x) return(x/c), # Divide by 'results_transforms' value
+            get_variable_domain_grid=function(...) expand.grid(c(1, 2), c(10, 20), c(100, 200)),
+            out <- get_joint_density_grid(fake_forecast, 2))
+  expect_equal(out$d, c(11.1, 22.4, 24.2, 48.8, 42.2, 84.8, 88.4, 177.6))
+  expect_equal(dim(out$grid_points), c(8,3))
+})
