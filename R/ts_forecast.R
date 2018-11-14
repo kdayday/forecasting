@@ -161,7 +161,7 @@ eval_avg_crps <-function(ts, actuals){
   crps <- vector('numeric', length=length(ts))
   for (i in seq_along(ts)) {
     if (is.prob_forecast(ts$forecasts[[i]])){
-      crps[i] <- scoringRules::crps_sample(actuals[i], get_samples(ts$forecasts[[i]]))
+      crps[i] <- scoringRules::crps_sample(actuals[i], get_1d_samples(ts$forecasts[[i]]))
     }
   }
   return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))

@@ -54,7 +54,7 @@ calc_is <- function(x, actual, alpha) {
 #' from the kde results.
 plot.prob_forecast <- function(x, cvar=FALSE) {
   # Assume data is power or irradiance and must be non-negative
-  epdf <- stats::density(get_samples(x), from=0)
+  epdf <- stats::density(get_1d_samples(x), from=0)
   plot(epdf, xlab='Power [W]', ylab='Probability',
        main='Estimated probability distribution', sub = paste("Location: ", x$location, ", Time:", x$time))
 
@@ -77,8 +77,8 @@ is.prob_forecast <- function(x) inherits(x, "prob_forecast")
 
 #' Register generic sample function
 #' @param x A prob_forecast object
-get_samples <- function(x) {
-    UseMethod("get_samples",x)
+get_1d_samples <- function(x) {
+    UseMethod("get_1d_samples",x)
 }
 
 # Methods for aggregate probabilistic forecast class using vine copulas
@@ -124,7 +124,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
   x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  samples <- get_samples(x)
+  samples <- get_1d_samples(x)
   x$quantiles <- calc_quantiles(samples)
   results <- calc_cvar(samples, epsilon)
   x$cvar <- results$cvar
@@ -136,7 +136,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
 #' Sample the vine copula model and sum to calculate samples of the univariate, aggregate power forecast
 #'
 #' @return A column matrix of aggregate powers
-get_samples.prob_nd_vine_forecast <- function(x) {
+get_1d_samples.prob_nd_vine_forecast <- function(x) {
   samples.u <- rvinecopulib::rvinecop(x$n, x$model)
   samples.xs <- matrix(nrow = x$n, ncol = length(x))
   for (i in 1:length(x)){
@@ -168,7 +168,7 @@ prob_nd_gaussian_forecast <- function(dat, location, time,
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_nd_gaussian_forecast <- function(x) {
+get_1d_samples.prob_nd_gaussian_forecast <- function(x) {
   stop('Not implemented')
 }
 
@@ -195,7 +195,7 @@ prob_nd_empirical_forecast <- function(dat, location, time,
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_nd_empirical_forecast <- function(x) {
+get_1d_samples.prob_nd_empirical_forecast <- function(x) {
   stop('Not implemented')
 }
 
@@ -222,6 +222,6 @@ prob_1d_site_forecast <- function(dat, location, time,
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_1d_site_forecast <- function(x) {
+get_1d_samples.prob_1d_site_forecast <- function(x) {
   stop('Not implemented')
 }
