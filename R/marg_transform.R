@@ -109,7 +109,6 @@ probkde <- function(x, ...) {
 #' @param ... Optional inputs to the bkde function
 #' @return A list of the evaluation points, density, and cumulative distribution
 probkde1d <- function(x, ...) {
-  stop("Not implemented yet, undetermined bugs.")
   pdf <- kde1d::kde1d(x, ...)
   cdf <- pracma::cumtrapz(pdf$grid_points, pdf$values)
   return(list(x=pdf$grid_points, d=as.numeric(pdf$values), u=as.numeric(cdf)))
