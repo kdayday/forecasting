@@ -17,7 +17,7 @@ marg_transform <- function(x, method='geenens', ... ) {
   # Get selected marginal estimate
   res <- func(x, ...)
 
-  if (!all(is.na(res$d)) & any(res$d < 0)) warning("Negative probability density values.") # Ignores empirical estimate
+  if (!all(is.nan(res$d)) & any(res$d < 0)) warning("Negative probability density values.") # Ignores empirical estimate
 
   dat <- list('x'=res$x,
               'd'=res$d,
@@ -51,7 +51,7 @@ plot.marg_transform <- function(c) {
 #'
 #' @param c A marg_transform object
 plot_pdf <- function(c) {
-  if (all(is.na(c$d))) stop('Probability density estimate unavailable. (Perhaps using empirical estimate?)')
+  if (all(is.nan(c$d))) stop('Probability density estimate unavailable. (Perhaps using empirical estimate?)')
   graphics::plot(c$x, c$d, xlab="Variable domain X", ylab='Probability density')
 }
 
@@ -85,7 +85,7 @@ to_uniform <- function(c, x) {
 #' @return A vector linearly interpolated from the variable to probability density
 to_probability <- function(c, x) {
   if (any(x<c$xmin | x >c$xmax)) warning("Evaluation point(s) beyond the variable range of the PDF.  ")
-  if (is.na(c$d)) stop("Probability vector is NA. (Undefined for empirical transform).")
+  if (is.nan(c$d)) stop("Probability vector is NaN. (Undefined for empirical transform).")
   return(stats::approx(c$x, c$d, xout=x, yleft = 0, yright = 0)$y)
 }
 
@@ -135,7 +135,7 @@ probempirical <- function(x, xmax=max(x)) {
   xout <- as.numeric(unlist(agg['value']))
   u <- as.numeric(unlist((cumsum(agg['x'])-1)/(length(xseq)-1)))
 
-  return(list(x=xout, u=u, d=NA))
+  return(list(x=xout, u=u, d=NaN))
 }
 
 # ----------------------------------------------------------------------------
@@ -166,7 +166,7 @@ myintegral<-function (x, fx, n.pts = 256, ret = FALSE)
 #' 3) nearest-neighbor bandwdith selection
 #' @param x A vector of samples
 #' @param xmin Minimum allowable x value (e.g., 0)
-#' @param xmax Maximum allowable x value for probit transformation, or NA for log transformation (non-negative)
+#' @param xmax Maximum allowable x value for probit transformation, or NaN for log transformation (non-negative)
 #' @param scale Scaling factor (0,1] to move maximum values off boundary at 1
 #' @param zero_offset Amount to shift minimum values off the boundary at 0 in the (0,1) domain
 #' @param max_scaler For log transforms, estimation is made over a range of width (max(x)-xmin)*max_scaler
@@ -176,8 +176,8 @@ myintegral<-function (x, fx, n.pts = 256, ret = FALSE)
 probtranskde <- function(x, xmax, xmin=0, scale=0.9999, zero_offset=0.0001, max_scaler=2,
                          weight="WLSCV2",n.res=500) {
 
-  if (!((is.na(xmax)|is.numeric(xmax)) & is.numeric(xmin))) stop('Bad input. Requires either xmin (xmax=NA) for log transform or xmin and xmax for probit transform')
-  if (!(is.na(xmax)) & xmax <= xmin) stop("Bad input. Xmax must be greater than xmin.")
+  if (!((is.nan(xmax)|is.numeric(xmax)) & is.finite(xmin))) stop('Bad input. Requires either xmin (xmax=NaN) for log transform or xmin and xmax for probit transform')
+  if (!(is.nan(xmax)) & xmax <= xmin) stop("Bad input. Xmax must be greater than xmin.")
 
   xseq <- get_output_seq(x, xmin, xmax, n.res, max_scaler)
 
@@ -209,7 +209,7 @@ probtranskde <- function(x, xmax, xmin=0, scale=0.9999, zero_offset=0.0001, max_
   }
 
   # Predict is a generic function
-  if (is.na(xmax)){
+  if (is.nan(xmax)){
     ftildeX <- predict(fit, log(xseq))/xseq
   } else {
     ftildeX <- predict(fit,stats::qnorm(xseq))/stats::dnorm(stats::qnorm(xseq))
@@ -226,7 +226,7 @@ probtranskde <- function(x, xmax, xmin=0, scale=0.9999, zero_offset=0.0001, max_
 
 get_output_seq <- function(x, xmin, xmax, n.res, scaler) {
   # On (0, inf) for log function
-  if (is.na(xmax)) {
+  if (is.nan(xmax)) {
     return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res)*(max(x)-xmin)*scaler)
   } else { # On (0,1) for probit function
     return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res))
@@ -245,13 +245,13 @@ transform_to_real_line <- function(x, xmin, xmax, scale, zero_offset) {
   # If need be, scale input vector to (0,1)
   Xs <- scale_01(x, xmin, xmax, scale, zero_offset)
 
-  if (is.na(xmax)){
+  if (is.nan(xmax)){
     Ss <- log(Xs)
   } else {  # Probit transformation, truncating weird extreme outliers
     Ss<-stats::qnorm(Xs)
   }
 
-  if (any(is.infinite(Ss)|is.na(Ss))) stop('Transformation returned infinite or NA values. Check boundaries.')
+  if (any(is.infinite(Ss)|is.na(Ss))) stop('Transformation returned infinite or NA/NaN values. Check boundaries.')
   return(Ss)
 }
 
@@ -265,7 +265,7 @@ transform_to_real_line <- function(x, xmin, xmax, scale, zero_offset) {
 #' @return The vector of samples rescaled to [0,1]
 scale_01 <- function(x, xmin, xmax, scale, zero_offset) {
   if (scale <=0 | scale >1) stop('Scale factor should be (0,1].')
-  if (is.na(xmax)) {
+  if (is.nan(xmax)) {
     s <- x - xmin
     s[s==0] <- zero_offset
     return(s)
@@ -285,7 +285,7 @@ scale_01 <- function(x, xmin, xmax, scale, zero_offset) {
 #' @return The vector of samples rescaled to [0,1]
 scale_full <- function(x01, d01, xmin, xmax, scale) {
   if (scale <=0 | scale >1) stop('Scale factor should be (0,1].')
-  if (is.na(xmax)) {
+  if (is.nan(xmax)) {
     x <- x01 + xmin
     d <- d01
   } else {

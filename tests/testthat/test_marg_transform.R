@@ -80,14 +80,14 @@ test_that("probempirical handles both duplicate values. ", {
 })
 
 test_that("probkde1d container is correct", {
-  with_mock(kde1d=function(x, y=NA) return(list('grid_points'=x, 'values'=y)),
+  with_mock(kde1d=function(x, y=NaN) return(list('grid_points'=x, 'values'=y)),
               out <- probkde1d(0:10, y=rep(0.1, 11)))
   expect_equal(out$x, 0:10)
   expect_equal(out$u, seq(0, 1, by=0.1))
 })
 
 test_that("probkde container is correct", {
-  with_mock(bkde=function(x, y=NA) return(list('x'=x, 'y'=y)),
+  with_mock(bkde=function(x, y=NaN) return(list('x'=x, 'y'=y)),
             out <- probkde(0:10, y=rep(0.1, 11)))
   expect_equal(out$x, 0:10)
   expect_equal(out$u, seq(0, 1, by=0.1))
@@ -97,30 +97,30 @@ test_that("probkde container is correct", {
 # Test auxillary functions for Geenens et. al transform
 
 test_that("probtranskde throws errors", {
-  expect_error(probtranskde(x, xmin=NA, xmax=1), "Bad input.*")
+  expect_error(probtranskde(x, xmin=NaN, xmax=1), "Bad input.*")
   expect_error(probtranskde(x, xmin=2, xmax=1), "Bad input.*")
 })
 
 test_that("transform_to_real_line throws errors", {
   # Negative value errors
-  expect_error(transform_to_real_line(c(-1, 2, 4), xmin=0, xmax=NA, scale=0.5, zero_offset = 0.1), "Transformation*")
+  expect_error(transform_to_real_line(c(-1, 2, 4), xmin=0, xmax=NaN, scale=0.5, zero_offset = 0.1), "Transformation*")
   expect_error(transform_to_real_line(c(-1, 2, 4), xmin=0, xmax=10, scale=0.5, zero_offset = 0.1), "Transformation*")
   # zero errors
   expect_error(transform_to_real_line(c(0, 2, 4), xmin=0, xmax=4, scale=0.9, zero_offset = 0), "Transformation*")
-  expect_error(transform_to_real_line(c(0, 2, 4), xmin=0, xmax=NA, scale=0.9, zero_offset = 0), "Transformation*")
+  expect_error(transform_to_real_line(c(0, 2, 4), xmin=0, xmax=NaN, scale=0.9, zero_offset = 0), "Transformation*")
   # 1 errors
   expect_error(transform_to_real_line(c(0, 2, 4), xmin=0, xmax=4, scale=1, zero_offset = 0.1), "Transformation*")
 })
 
 test_that("get_output_seq is correct.", {
-  expect_equal(get_output_seq(x=c(1, 2, 3, 5), xmin=1, xmax=NA, n.res=4, scaler=2), c(0.2, 0.4, 0.6, 0.8)*8)
+  expect_equal(get_output_seq(x=c(1, 2, 3, 5), xmin=1, xmax=NaN, n.res=4, scaler=2), c(0.2, 0.4, 0.6, 0.8)*8)
   expect_equal(get_output_seq(x=c(1, 2, 3, 5), xmin=0, xmax=3, n.res=4, scaler=2), c(0.2, 0.4, 0.6, 0.8))
 })
 
 
 test_that("Scale_01 adjusts zeros and xmin for log transform.", {
-  expect_equal(scale_01(x=c(1, 2, 4), xmin=1, xmax=NA, scale=0.5, zero_offset = 0.0001), c(0.0001, 1, 3))
-  expect_equal(scale_01(x=c(1, 2, 4), xmin=0, xmax=NA, scale=0.5, zero_offset = 0.0001), c(1, 2, 4))
+  expect_equal(scale_01(x=c(1, 2, 4), xmin=1, xmax=NaN, scale=0.5, zero_offset = 0.0001), c(0.0001, 1, 3))
+  expect_equal(scale_01(x=c(1, 2, 4), xmin=0, xmax=NaN, scale=0.5, zero_offset = 0.0001), c(1, 2, 4))
 })
 
 test_that("Scale_01 rescales for probit transform.", {
@@ -128,12 +128,12 @@ test_that("Scale_01 rescales for probit transform.", {
 })
 
 test_that("Scale functions throw errors for scaling factors not in (0,1]", {
-  expect_error(scale_full(x01=c(0, 1, 2), d01=c(2, 3, 4), xmin=0, xmax=NA, scale=10), "Scale*")
-  expect_error(scale_full(x01=c(0, 1, 2), d01=c(2, 3, 4), xmin=0, xmax=NA, scale=0), "Scale*")
+  expect_error(scale_full(x01=c(0, 1, 2), d01=c(2, 3, 4), xmin=0, xmax=NaN, scale=10), "Scale*")
+  expect_error(scale_full(x01=c(0, 1, 2), d01=c(2, 3, 4), xmin=0, xmax=NaN, scale=0), "Scale*")
 } )
 
 test_that("Scale_full adjusts log transform for xmin.", {
-  out <- scale_full(x01=c(0, 1, 2), d01=c(2, 3, 4), xmin=1, xmax=NA, scale=0.9)
+  out <- scale_full(x01=c(0, 1, 2), d01=c(2, 3, 4), xmin=1, xmax=NaN, scale=0.9)
   expect_equal(out$x, c(1, 2, 3))
   expect_equal(out$d, c(2, 3, 4))
 })
