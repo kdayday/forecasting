@@ -52,23 +52,24 @@ calc_is <- function(x, actual, alpha) {
 #' Plot probabilistic forecast's estimated pdf (with kde)
 #' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
 #' from the kde results.
-plot.prob_forecast <- function(x, ...) {
+plot.prob_forecast <- function(x, cvar=FALSE) {
   # Assume data is power or irradiance and must be non-negative
   epdf <- stats::density(get_samples(x), from=0)
   plot(epdf, xlab='Power [W]', ylab='Probability',
        main='Estimated probability distribution', sub = paste("Location: ", x$location, ", Time:", x$time))
 
-  # Color in tails above/below desired epsilon's
-  i1 <- min(which(epdf$x >= x$var$low))
-  i2 <- max(which(epdf$x <= x$var$high))
-  graphics::lines(rep(x$var$low,times=2), c(0, epdf$y[i1]), col='black')
-  graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
-  graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(x$var$low,2), "\nCVaR: ", round(x$cvar$low,2)), pos=3)
+  if (cvar){# Color in tails above/below desired epsilon's
+    i1 <- min(which(epdf$x >= x$var$low))
+    i2 <- max(which(epdf$x <= x$var$high))
+    graphics::lines(rep(x$var$low,times=2), c(0, epdf$y[i1]), col='black')
+    graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
+    graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(x$var$low,2), "\nCVaR: ", round(x$cvar$low,2)), pos=3)
 
-  graphics::lines(rep(x$var$high,times=2), c(0, epdf$y[i2]), col='black')
-  last <- length(epdf$x)
-  graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
-  graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(x$var$high,2), "\nCVaR: ", round(x$cvar$high,2)), pos=3)
+    graphics::lines(rep(x$var$high,times=2), c(0, epdf$y[i2]), col='black')
+    last <- length(epdf$x)
+    graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
+    graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(x$var$high,2), "\nCVaR: ", round(x$cvar$high,2)), pos=3)
+  }
 }
 
 #' Check probabilistic forecast class
