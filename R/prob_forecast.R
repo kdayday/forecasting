@@ -104,7 +104,7 @@ get_joint_density_grid <- function(x, ...) {
 #' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_nd_vine_forecast <- function(dat, location, time,
-                                  training_transform_type="geenens", results_transform_type='geenens', n=3000,
+                                  training_transform_type="empirical", results_transform_type='empirical', n=3000,
                                   epsilon=c(0.05, 0.95), ...) {
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
   if (class(dat)!='matrix') stop('Input data must be a matrix')

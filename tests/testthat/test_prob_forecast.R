@@ -28,6 +28,18 @@ test_that("Marginal distribution optional arguments are passed through.", {
   expect_equal(out$training_transforms[[1]]$method, 'geenens')
 })
 
+test_that("Marginal distribution optional arguments are passed through and prob forecast optional arguments are extracted.", {
+  fake_forecast_class_call <- function(x, location='TX', time='a time', n=3000, epsilon=c(0.05,0.95), ...){
+    prob_nd_vine_forecast(x, location=location, time=time, n=n, epsilon=epsilon, ...)}
+  with_mock(marg_transform=function(x, method='default', anoption=NA) return(list(method=method, anoption=anoption)),
+            to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
+            get_1d_samples= mock_samp, calc_cvar=mock_eval,
+            out <- fake_forecast_class_call(matrix(c(0,0,0,0), ncol=2), location='TX', time='sometime',
+                               training_transform_type="geenens", results_transform_type='geenens', anoption=20))
+  expect_equal(out$training_transforms[[1]]$anoption, 20)
+  expect_equal(out$training_transforms[[1]]$method, 'geenens')
+})
+
 test_that("Vine copula forecast initialization throws errors", {
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
             vinecop=function(x, ...) NA,

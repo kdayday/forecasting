@@ -19,6 +19,7 @@ marg_transform <- function(x, method='geenens', ... ) {
 
   if (!all(is.nan(res$d)) & any(res$d < 0)) warning("Negative probability density values.") # Ignores empirical estimate
 
+  # xmin and xmax are the min/max values of the estimation vector, not the exact boundaries of support
   dat <- list('x'=res$x,
               'd'=res$d,
               'u'=res$u,
