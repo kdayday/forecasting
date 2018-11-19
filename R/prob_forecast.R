@@ -110,9 +110,9 @@ prob_nd_vine_forecast <- function(dat, location, time,
   if (class(dat)!='matrix') stop('Input data must be a matrix')
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
 
-  training_transforms <- apply(dat, MARGIN = 2, FUN=purrr::partial(marg_transform, method=training_transform_type), ...)
-  # Results transforms must be subsequently updated if desired
-  results_transforms <- apply(dat, MARGIN = 2, FUN=purrr::partial(marg_transform, method=results_transform_type), ...)
+  tr <- calc_transforms(dat, training_transform_type, results_transform_type, ...)
+  training_transforms <- tr$training
+  results_transforms <- tr$results
 
   uniform_dat <- mapply(function(n, t) {to_uniform(t, dat[,n])}, colnames(dat, do.NULL=FALSE), training_transforms)
   model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
@@ -137,6 +137,38 @@ prob_nd_vine_forecast <- function(dat, location, time,
   x$var<- results$var
 
   return(x)
+}
+
+#' Calculate lists of variable-to-uniform domain transforms for all dimensions
+#'
+#' @param dat training data matrix
+#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "method")
+#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "method")
+#' @param ... Optional arguments to marg_transform
+#' @return list of "training" and "results" transforms to use.
+calc_transforms <- function(dat, training_transform_type, results_transform_type, ...) {
+  training <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, method=training_transform_type, ...)
+  # Results transforms must be subsequently updated if desired
+  if (results_transform_type==training_transform_type) {
+    results <- training
+  } else {
+    results <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, method=results_transform_type, ...)
+  }
+  return(list('training'=training, 'results'=results))
+}
+
+#' Subfunction for calc_transforms to cycle thorugh xmin and xmax if they are given uniquely for each dimension
+#'
+#' @param idx Column index of dat
+#' @param dat training data matrix over all the dimensions
+#' @param method marg_transform method
+#' @param ... Optional arguments to marg_transform, including potentially xmin or xmax in either scalar or vector form
+get_transform_with_unique_xmin_max <- function(idx, dat, method, ...) {
+  args <- list(...)
+  # Use unique xmin/xmax values if vectors are given
+  if ('xmin' %in% names(args) & length(args[['xmin']]) > 1) {args[['xmin']] <- args[['xmin']][idx]}
+  if ('xmax' %in% names(args) & length(args[['xmax']]) > 1) {args[['xmax']] <- args[['xmax']][idx]}
+  return(do.call(marg_transform, c(list(dat[,idx], method), args))) # repackage arguments into single list for do.call
 }
 
 #' Sample the vine copula model and sum to calculate samples of the univariate, aggregate power forecast

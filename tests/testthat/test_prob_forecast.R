@@ -10,7 +10,7 @@ epsilon=c(0.05, 0.95)
 
 test_that("Basic vine copula forecast initialization is correct.", {
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
-            vinecop=function(x, ...) NA, marg_transform=function(...) "A transform",
+            vinecop=function(x, ...) NA, calc_transforms=function(...) list('training'='tr', 'results'='res'),
             to_uniform=function(...) "To uniform",
   OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', time=1,  n=3000, epsilon=epsilon))
   expect_identical(OUT$cvar$low, 'low')
@@ -19,6 +19,7 @@ test_that("Basic vine copula forecast initialization is correct.", {
 })
 
 test_that("Marginal distribution optional arguments are passed through.", {
+  # This actually goes through calc_transforms as well now, which I haven't bothered changing.
   with_mock(marg_transform=function(x, method='default', anoption=NA) return(list(method=method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, calc_cvar=mock_eval,
@@ -45,6 +46,36 @@ test_that("Vine copula forecast initialization throws errors", {
             vinecop=function(x, ...) NA,
             expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three', epsilon=epsilon)))
   expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  n=3000, epsilon=epsilon))
+})
+
+test_that("get_transform_with_unique_xmin_max handles optional arguments correctly", {
+  # Test xmin and xmax are lists
+  mock_trans <- function(x, method=method, ...) {return(list(...))}
+  with_mock(marg_transform=mock_trans,
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method', athing='a', xmin=c(4, 5), xmax=8))
+  expect_equal(out, list(athing='a', xmin=5, xmax=8))
+  with_mock(marg_transform=mock_trans,
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method', athing='a', xmin=4, xmax=c(5, 6)))
+  expect_equal(out, list(athing='a', xmin=4, xmax=6))
+  # No xmin or xmax
+  with_mock(marg_transform=mock_trans,
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method', athing='a'))
+  expect_equal(out, list(athing='a'))
+  # No arguments
+  with_mock(marg_transform=mock_trans,
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method'))
+  expect_equal(length(out), 0)
+})
+
+test_that("calc_transforms handles inputs correctly", {
+  mock_get_trans <- function(idx, dat, method, ...) {if (method=='a') return(sum(dat[,idx])) else return(diff(dat[,idx]))}
+  with_mock(get_transform_with_unique_xmin_max=mock_get_trans,
+            out <-calc_transforms(matrix(c(5, 2, 7, 1), ncol=2), training_transform_type='a', results_transform_type='b', something='else'))
+  expect_equal(out$training, list(7, 8))
+  expect_equal(out$results, list(-3, -6))
+  with_mock(get_transform_with_unique_xmin_max=mock_get_trans,
+            out <-calc_transforms(matrix(c(5, 2, 7, 1), ncol=2), training_transform_type='a', results_transform_type='a'))
+  expect_equal(out$results, list(7, 8))
 })
 
 test_that("CVAR estimate is correct", {
