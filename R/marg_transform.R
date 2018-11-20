@@ -37,8 +37,8 @@ is.marg_transform <- function(x) inherits(x, "marg_transform")
 summary.marg_transform <- function(x) {
   print("Marginal transform")
   print(paste("Method:", x$method, sep=' '))
-  print(paste("Estimated over support from", xmin, 'to', xmax, sep=' '))
-  print(paste("Area under CDF:", pracma::trapz(x$x, x$u, sep=' ')))
+  print(paste("Estimated over support from", x$xmin, 'to', x$xmax, sep=' '))
+  print(paste("Max CDF value:", max(x$u), sep=' '))
 }
 
 #' Plot a marginal transform
@@ -142,7 +142,7 @@ probempirical <- function(x, xmax=max(x)) {
 # Functions for bounded support transformations with nearest neighbors bandwidths
 
 # Author: Gery Geenens
-myintegral<-function (x, fx, n.pts = 256, ret = FALSE)
+myintegral<-function (x, fx, n.pts = 256)
 {
 
   if (class(fx) == "function")
@@ -156,8 +156,7 @@ myintegral<-function (x, fx, n.pts = 256, ret = FALSE)
   h = diff(ap$x)[1]
   integral = h * (ap$y[2 * (1:n.pts) - 1] + 4 * ap$y[2 * (1:n.pts)] +
                     ap$y[2 * (1:n.pts) + 1])/3
-  invisible(list(value = sum(integral), cdf = list(x = ap$x[2 *
-                                                              (1:n.pts)], y = cumsum(integral))))
+  invisible(list(value = sum(integral), cdf = list(x = ap$x[2 * (1:n.pts)], y = cumsum(integral))))
 }
 
 # Author: Gery Geenens, extended by Kate Doubleday
@@ -221,7 +220,6 @@ probtranskde <- function(x, xmax, xmin=0, scale=0.9999, zero_offset=0.0001, max_
   res <- scale_full(xseq, ftildeX, xmin, xmax, scale)
 
   return(list(x=res$x, d=res$d, u=pracma::cumtrapz(res$x, res$d)))
-
 }
 
 get_output_seq <- function(x, xmin, xmax, n.res, scaler) {
