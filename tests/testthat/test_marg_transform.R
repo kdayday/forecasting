@@ -62,6 +62,7 @@ test_that("probempirical handles both a given xmax", {
   expect_equal(out$u, c(0, 0.25, 0.5, 0.75, 1))
 })
 
+# These are now inadvertently testing check_xmax....
 test_that("probempirical replaces given xmax with actual data maximum", {
   out <- probempirical(c(1, 6), xmax=5)
   expect_equal(out$x, c(0, 1,  6))
@@ -147,3 +148,8 @@ test_that("Scale_full doesn't add 0 when it's already there.", {
   expect_equal(out$x, seq(0, 0.5, by=0.1))
 })
 
+test_that("check_xmax is correct", {
+  expect_equal(check_xmax(c(0, 1, 2, 3), xmax=4), 4)
+  expect_equal(check_xmax(c(0, 1, 2, 3), xmax=2), 3)
+  expect_true(is.nan(check_xmax(c(0, 1, 2, 3), xmax=NaN)))
+})

@@ -122,8 +122,7 @@ probkde1d <- function(x, ...) {
 #' @return A list of the evaluation points, density, and cumulative distribution
 probempirical <- function(x, xmax=max(ceiling(x))) {
 
-  # Pick the largest maximum value, in case actual data exceeds rating
-  xmax = max(xmax, max(ceiling(x)))
+  xmax <- check_xmax(x, xmax)
   if (xmax > max(x)) {
     xseq <- c(0, sort(x), xmax)
   } else {
@@ -136,6 +135,15 @@ probempirical <- function(x, xmax=max(ceiling(x))) {
   u <- as.numeric(unlist((cumsum(agg['x'])-1)/(length(xseq)-1)))
 
   return(list(x=xout, u=u, d=NaN))
+}
+
+check_xmax <- function (x, xmax){
+  # Pick the largest maximum value, in case actual data exceeds rating
+  if (!(is.nan(xmax)) & xmax < max(ceiling(x))){
+    warning(paste("To fit given data points, xmax of ", xmax, " being replaced with ", max(ceiling(x)), sep=''))
+    xmax <- max(ceiling(x))
+  }
+  return(xmax)
 }
 
 # ----------------------------------------------------------------------------
@@ -177,6 +185,7 @@ probtranskde <- function(x, xmax, scale=0.9999, zero_offset=0.0001, max_scaler=2
   if (!((is.nan(xmax)|is.numeric(xmax)))) stop('Bad input. Requires either xmax=NaN for log transform or numeric xmax for probit transform')
   if (!(is.nan(xmax)) & xmax <= 0) stop("Bad input. Xmax must be non-negative.")
 
+  xmax <- check_xmax(x, xmax)
   xseq <- get_output_seq(x, xmax, n.res, max_scaler)
 
   n<-length(x)
