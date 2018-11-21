@@ -56,7 +56,7 @@ plot.prob_forecast <- function(x, cvar=FALSE) {
   # Assume data is power or irradiance and must be non-negative
   epdf <- stats::density(get_1d_samples(x), from=0)
   plot(epdf, xlab='Power [W]', ylab='Probability',
-       main='Estimated probability distribution', sub = paste("Location: ", x$location, ", Time:", x$time))
+       main='Estimated probability density', sub = paste("Location: ", x$location, ", Time:", x$time))
 
   if (cvar){# Color in tails above/below desired epsilon's
     i1 <- min(which(epdf$x >= x$var$low))
