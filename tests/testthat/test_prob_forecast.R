@@ -6,14 +6,12 @@ library(rvinecopulib)
 mock_samp <- function(x) "A sample"
 mock_pd <- function(x,y) "A pd"
 mock_eval <- function(x,y,z) list(cvar = list(low='low', high='high'), var=list(low=0, high=1))
-epsilon=c(0.05, 0.95)
 
 test_that("Basic vine copula forecast initialization is correct.", {
-  with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
+  with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd,
             vinecop=function(x, ...) NA, calc_transforms=function(...) list('training'='tr', 'results'='res'),
             to_uniform=function(...) "To uniform",
-  OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', time=1,  n=3000, epsilon=epsilon))
-  expect_identical(OUT$cvar$low, 'low')
+  OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', time=1,  n=3000))
   expect_true(is.prob_forecast((OUT)))
   expect_equal(length(OUT), 2)
 })
@@ -30,8 +28,8 @@ test_that("Marginal distribution optional arguments are passed through.", {
 })
 
 test_that("Marginal distribution optional arguments are passed through and prob forecast optional arguments are extracted.", {
-  fake_forecast_class_call <- function(x, location='TX', time='a time', n=3000, epsilon=c(0.05,0.95), ...){
-    prob_nd_vine_forecast(x, location=location, time=time, n=n, epsilon=epsilon, ...)}
+  fake_forecast_class_call <- function(x, location='TX', time='a time', n=3000,  ...){
+    prob_nd_vine_forecast(x, location=location, time=time, n=n, ...)}
   with_mock(marg_transform=function(x, method='default', anoption=NA) return(list(method=method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, calc_cvar=mock_eval,
@@ -44,8 +42,8 @@ test_that("Marginal distribution optional arguments are passed through and prob 
 test_that("Vine copula forecast initialization throws errors", {
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
             vinecop=function(x, ...) NA,
-            expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three', epsilon=epsilon)))
-  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  n=3000, epsilon=epsilon))
+            expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three')))
+  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  n=3000))
 })
 
 test_that("get_transform_with_unique_xmin_max handles optional arguments correctly", {

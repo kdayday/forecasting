@@ -52,23 +52,25 @@ calc_is <- function(x, actual, alpha) {
 #' Plot probabilistic forecast's estimated pdf (with kde)
 #' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
 #' from the kde results.
-plot.prob_forecast <- function(x, cvar=FALSE) {
+plot.prob_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95)) {
   # Assume data is power or irradiance and must be non-negative
-  epdf <- stats::density(get_1d_samples(x), from=0)
+  samples <- get_1d_samples(x)
+  epdf <- stats::density(samples, from=0)
   plot(epdf, xlab='Power [W]', ylab='Probability',
        main='Estimated probability density', sub = paste("Location: ", x$location, ", Time:", x$time))
 
   if (cvar){# Color in tails above/below desired epsilon's
-    i1 <- min(which(epdf$x >= x$var$low))
-    i2 <- max(which(epdf$x <= x$var$high))
-    graphics::lines(rep(x$var$low,times=2), c(0, epdf$y[i1]), col='black')
+    cvar_info <- calc_cvar(samples, epsilon)
+    i1 <- min(which(epdf$x >= cvar_info$var$low))
+    i2 <- max(which(epdf$x <= cvar_info$var$high))
+    graphics::lines(rep(cvar_info$var$low,times=2), c(0, epdf$y[i1]), col='black')
     graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
-    graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(x$var$low,2), "\nCVaR: ", round(x$cvar$low,2)), pos=3)
+    graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(cvar_info$var$low,2), "\nCVaR: ", round(cvar_info$cvar$low,2)), pos=3)
 
-    graphics::lines(rep(x$var$high,times=2), c(0, epdf$y[i2]), col='black')
+    graphics::lines(rep(cvar_info$var$high,times=2), c(0, epdf$y[i2]), col='black')
     last <- length(epdf$x)
     graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
-    graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(x$var$high,2), "\nCVaR: ", round(x$cvar$high,2)), pos=3)
+    graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(cvar_info$var$high,2), "\nCVaR: ", round(cvar_info$cvar$high,2)), pos=3)
   }
 }
 
@@ -100,12 +102,10 @@ get_joint_density_grid <- function(x, ...) {
 #' @param training_transform_type Transform of training data into uniform domain (see marg_transform "method")
 #' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "method")
 #' @param n An integer, number of copula samples to take
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_nd_vine_forecast <- function(dat, location, time,
-                                  training_transform_type="empirical", results_transform_type='empirical', n=3000,
-                                  epsilon=c(0.05, 0.95), ...) {
+                                  training_transform_type="empirical", results_transform_type='empirical', n=3000, ...) {
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
   if (class(dat)!='matrix') stop('Input data must be a matrix')
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
@@ -124,17 +124,13 @@ prob_nd_vine_forecast <- function(dat, location, time,
               time = time,
               model = model,
               d = dim(dat)[2],
-              n=n,
-              epsilon=epsilon
+              n=n
               )
   x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
   samples <- get_1d_samples(x)
   x$quantiles <- calc_quantiles(samples)
-  results <- calc_cvar(samples, epsilon)
-  x$cvar <- results$cvar
-  x$var<- results$var
 
   return(x)
 }
@@ -235,10 +231,8 @@ get_variable_domain_grid <- function(x, k) {
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param n An integer, number of copula samples to take
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_gaussian_forecast <- function(dat, location, time,
-                                      n=3000, epsilon=c(0.05, 0.95)) {
+prob_nd_gaussian_forecast <- function(dat, location, time, n=3000, ...) {
   stop('Not implemented')
 }
 
@@ -271,10 +265,8 @@ get_joint_density_grid.prob_nd_gaussian_forecast <- function(x, k=100) {
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param n An integer, number of copula samples to take
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_empirical_forecast <- function(dat, location, time,
-                                      n=3000, epsilon=c(0.05, 0.95)) {
+prob_nd_empirical_forecast <- function(dat, location, time, n=3000) {
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for empirical copula forecast.')
   stop('Not implemented')
 }
@@ -297,7 +289,6 @@ get_1d_samples.prob_nd_empirical_forecast <- function(x) {
 #' @param dat A matrix of ensemble members, [ntrain x 1]
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_1d_rank_forecast <- function(dat, location, time, ...) {
   if (dim(dat)[2] > 1) stop('Training data must be of dimensions [ntrain x 1] for univariate forecasts.')
@@ -332,7 +323,6 @@ get_1d_samples.prob_1d_rank_forecast <- function(x) {
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param nmem An integer, number of ensemble members to take
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_1d_ensemble_forecast <- function(dat, location, time,
                                   nmem=20, ...) {
@@ -344,8 +334,7 @@ prob_1d_ensemble_forecast <- function(dat, location, time,
   dat <- list(location = location,
               time = time,
               d = 1,
-              nmem=nmem,
-              epsilon=epsilon
+              nmem=nmem
   )
   x <- structure(dat, class = c("prob_forecast", "prob_1d_ensemble_forecast"))
 
