@@ -9,32 +9,6 @@ length.prob_forecast <- function(x){
   return(x$d)
 }
 
-#' Calculate forecast quantiles
-#'
-#' @param samples A column matrix of summed samples
-#' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles <- function(samples,
-                     quantile_density=0.1) {
-  if (quantile_density <= 0 | quantile_density >= 1) stop('Quantile density must be in (0,1).')
-  quantiles <- stats::quantile(samples, probs=seq(0, 1 , quantile_density), type=1, names=TRUE)
-  return(quantiles)
-}
-
-#' Calculate VaR and CVaR from sampled data. CVaR calculation is done directly from the samples, rather than estimated from a fitted distribution.
-#'
-#' @param samples Numeric vector
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
-#' @return list of var, cvar
-calc_cvar <- function(samples, epsilon=c(0.05, 0.95)) {
-  if (any(epsilon <= 0) | any(epsilon >= 1)) stop("Epsilon's must be in (0,1).")
-  var_low <- stats::quantile(samples, probs=epsilon[1], type=1, names=FALSE)
-  cvar_low <- mean(samples[samples <= var_low])
-  var_high <- stats::quantile(samples, probs=epsilon[2], type=1, names=FALSE)
-  cvar_high <- mean(samples[samples >= var_high])
-  return(list('cvar' = list('low'=cvar_low,'high' = cvar_high), 'var'=list('low'=var_low, 'high'=var_high)))
-}
-
 #' Calculate interval score for an interval from alpha/2 to 1-alpha/2. Negatively oriented
 #' First term: sharpness, second and third terms: penalty for reliability.
 #'
@@ -89,6 +63,19 @@ get_joint_density_grid <- function(x, ...) {
   UseMethod("get_joint_density_grid",x)
 }
 
+#' Register generic quantiles function
+#' @param x A prob_forecast object
+calc_quantiles <- function(x, ...) {
+  UseMethod("calc_quantiles",x)
+}
+
+#' Register generic VaR/CVaR function
+#' @param x A prob_forecast object
+calc_cvar <- function(x, ...) {
+  UseMethod("calc_cvar",x)
+}
+
+
 # Methods for aggregate probabilistic forecast class using vine copulas
 #------------------------------------------------------------------------------
 
@@ -129,8 +116,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
   x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  samples <- get_1d_samples(x)
-  x$quantiles <- calc_quantiles(samples)
+  x$quantiles <- calc_quantiles(x)
 
   return(x)
 }
@@ -180,6 +166,36 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
   return(samples.x)
 }
 
+#' Calculate forecast quantiles from samples of the vine copula
+#'
+#' @param x prob_nd_vine_forecast object
+#' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with cVaR calculation
+#' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
+#' @return A named numeric vector of estimated quantiles
+calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantile_density=0.1) {
+  if (quantile_density <= 0 | quantile_density >= 1) stop('Bad input. Quantile density must be in (0,1).')
+
+  if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
+  quantiles <- stats::quantile(samples, probs=seq(0, 1 , quantile_density), type=1, names=TRUE)
+  return(quantiles)
+}
+
+#' Calculate VaR and CVaR from sampled data. CVaR calculation is done directly from the samples, rather than estimated from a fitted distribution.
+#'
+#' @param x prob_nd_vine_forecast object
+#' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with quantiles calculation
+#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+#' @return list of var, cvar
+calc_cvar.prob_nd_vine_forecast <- function(x, samples=NA, epsilon=c(0.05, 0.95)) {
+  if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
+  if (any(epsilon <= 0) | any(epsilon >= 1)) stop("Bad input. Epsilon's must be in (0,1).")
+
+  var_low <- stats::quantile(samples, probs=epsilon[1], type=1, names=FALSE)
+  cvar_low <- mean(samples[samples <= var_low])
+  var_high <- stats::quantile(samples, probs=epsilon[2], type=1, names=FALSE)
+  cvar_high <- mean(samples[samples >= var_high])
+  return(list('cvar' = list('low'=cvar_low,'high' = cvar_high), 'var'=list('low'=var_low, 'high'=var_high)))
+}
 
 #' Estimate the joint probability density
 #'

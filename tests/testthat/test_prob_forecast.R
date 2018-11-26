@@ -2,6 +2,7 @@ context("Test forecasting context")
 
 library(forecasting)
 library(rvinecopulib)
+library(stats)
 
 mock_samp <- function(x) "A sample"
 mock_pd <- function(x,y) "A pd"
@@ -77,16 +78,38 @@ test_that("calc_transforms handles inputs correctly", {
 })
 
 test_that("CVAR estimate is correct", {
-  OUT <- calc_cvar(0:100, c(0.05, 0.95))
+  # Test sample over-ride
+  fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  OUT <- calc_cvar(fake_x, samples=0:100, epsilon=c(0.05, 0.95))
   expect_equal(OUT$cvar$low, 2.5)
   expect_equal(OUT$var$low, 5)
   expect_equal(OUT$cvar$high, 97.5)
   expect_equal(OUT$var$high, 95)
+  # Test default sampling
+  with_mock(get_1d_samples=function(...) return(0:100),
+            OUT2 <-calc_cvar(fake_x, epsilon=c(0.05, 0.95)))
+  expect_equal(OUT2$var$high, 95)
 })
 
 test_that("CVAR calculation throws errors", {
-  expect_error(calc_cvar(matrix(c(0,0,0,0), ncol=2), c(0.5, 2)))
-  expect_error(calc_cvar(matrix(c(0,0,0,0), ncol=2), c(0.5, -0.1)))
+  fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_error(calc_cvar(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, 2)), "Bad input*")
+  expect_error(calc_cvar(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, -0.1)), "Bad input*")
+})
+
+test_that("Vine copula quantile calculation adjusts for inputs", {
+  fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
+            OUT <- calc_quantiles(fake_x))
+  expect_equal(OUT, 10)
+  with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
+            OUT <- calc_quantiles(fake_x, samples=rep(1, times=4), quantile_density=0.2))
+  expect_equal(OUT, 4)
+})
+
+test_that("Vine copula quantile throws error", {
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantile_density=1), "Bad input*")
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantile_density=-0.1), "Bad input*")
 })
 
 test_that("Interval score calculation is correct.", {
