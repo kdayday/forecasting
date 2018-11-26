@@ -9,20 +9,22 @@
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
 #' @param n An integer: Number of samples to take
+#' @param ... optional arguments to the prob_forecast object
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 ts_forecast <- function(x, start_time, time_step,
                         scale='region',
                         location='unknown',
                         method='vine',
                         n=3000,
-                        epsilon=c(0.05, 0.95)) {
+                        epsilon=c(0.05, 0.95), ...) {
   # Check inputs
   if (!((dim(x[[1]])[2] == 1 & tolower(scale) %in% c("site", "s")) | (dim(x[[1]])[2] > 1 & tolower(scale) %in% c("region", "total", "r", "t")))){
       stop("Data and scale mis-match. x should be a list the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site') or a [ntrain x nsites] matrix for scale=='region' or 'total")
   }
 
   sun_up <- unlist(lapply(x, check_sunup))
-  forecasts <- calc_forecasts(x, sun_up, start_time, time_step, scale, location, method, n, epsilon)
+  forecasts <- calc_forecasts(x, sun_up, start_time=start_time, time_step=time_step, scale=scale, location=location,
+                              method=method, n=n, epsilon=epsilon, ...)
 
   dat <- list(start_time = start_time,
               scale = scale,
@@ -54,13 +56,15 @@ check_sunup <- function(x){
 #' @param method One of 'gaussian', 'empirical', 'vine'
 #' @param n An integer: Number of samples to take
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+#' @param ... optional arguments to the prob_forecast, including marginal estimator arguments
 #' @return A list of forecasts. Forecast is NA for times when sun is down.
-calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, n, epsilon) {
+calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, n, epsilon, ...) {
   forecast_class <- get_forecast_class(scale, method)
   forecasts <- vector(mode="list", length(x))
   for (i in seq_along(x)){
     if (sun_up[i]) {
-      forecasts[[i]] <- forecast_class(x[[i]], location, start_time + (i-1)*lubridate::dhours(time_step), n, epsilon)
+      forecasts[[i]] <- forecast_class(x[[i]], location=location, time=start_time + (i-1)*lubridate::dhours(time_step),
+                                       n=n, epsilon=epsilon, ...)
     } else {
       forecasts[[i]] <- NA
           }
@@ -161,7 +165,7 @@ eval_avg_crps <-function(ts, actuals){
   crps <- vector('numeric', length=length(ts))
   for (i in seq_along(ts)) {
     if (is.prob_forecast(ts$forecasts[[i]])){
-      crps[i] <- scoringRules::crps_sample(actuals[i], get_samples(ts$forecasts[[i]]))
+      crps[i] <- scoringRules::crps_sample(actuals[i], get_1d_samples(ts$forecasts[[i]]))
     }
   }
   return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))
