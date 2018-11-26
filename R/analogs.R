@@ -10,7 +10,7 @@
 #' @return A matrix of the analogs, one analog per row, columns for physical variables + realized value
 get_historical_analogs <- function(f_test, h_train, h_real, n, features, weights) {
   # Error check arguments
-  if (dim(f_test)[1] %% 2 == 0) stop('Forecast data must have an odd number of time-steps for centerd analog matching.')
+  if (dim(f_test)[1] %% 2 == 0) stop('Forecast data must have an odd number of time-steps for centered analog matching.')
   if (length(features) != length(weights)) stop(paste('Given', length(features), 'features and', length(weights), 'weights. Must be same length.', sep=' '))
   if (sum(weights) != 1) stop('Weights must sum to 1.')
   if (n < 1) stop(paste('At least 1 analog required. Requested', n, 'analogs.', sep=' '))

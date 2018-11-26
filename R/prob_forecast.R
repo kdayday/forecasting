@@ -199,16 +199,16 @@ get_samples.prob_nd_empirical_forecast <- function(x) {
 #' @param time A lubridate time stamp
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_1d_rank_forecast <- function(dat, location, time, epsilon=c(0.05, 0.95)) {
+prob_1d_rank_forecast <- function(dat, location, time, ...) {
   if (dim(dat)[2] > 1) stop('Training data must be of dimensions [ntrain x 1] for univariate forecasts.')
+
+  stop("Not implemented")
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
               time = time,
-              d = 1,
-              n=n,
-              epsilon=epsilon
-  )
+              d = 1)
+
   x <- structure(dat, class = c("prob_forecast", "prob_1d_rank_forecast"))
 
   x$quantiles <- calc_quantiles(dat)
@@ -224,9 +224,42 @@ get_samples.prob_1d_rank_forecast <- function(x) {
   stop('Not implemented')
 }
 
+
+#' Initialize a univariate probabilistic power forecast for a specific time point with historical analogs.
+#' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
+#'
+#' @param dat A matrix of ensemble members, [ntrain x 1]
+#' @param location A string
+#' @param time A lubridate time stamp
+#' @param nmem An integer, number of ensemble members to take
+#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+#' @return An n-dimensional probabilistic forecast object from vine copulas
+prob_1d_ensemble_forecast <- function(dat, location, time,
+                                  nmem=20, ...) {
+  if (dim(dat)[2] > 1) stop('Training data must be of dimensions [ntrain x 1] for univariate forecasts.')
+
+  stop("Not implemented.")
+
+  # Initialize probabilistic forecast
+  dat <- list(location = location,
+              time = time,
+              d = 1,
+              nmem=nmem,
+              epsilon=epsilon
+  )
+  x <- structure(dat, class = c("prob_forecast", "prob_1d_ensemble_forecast"))
+
+  # Complete probabilistic forecast by sampling and aggregating
+  x$quantiles <- calc_quantiles(dat)
+
+  return(x)
+}
+
+#' Sample the probabilistic forecast
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_1d_site_forecast <- function(x) {
+get_samples.prob_1d_ensemble_forecast <- function(x) {
   stop('Not implemented')
 }
+
