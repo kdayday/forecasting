@@ -4,11 +4,10 @@ library(forecasting)
 library(lubridate)
 library(scoringRules)
 
-# mock_calc <- function(x, sun_up, start_time, time_step, scale, location, method, n, epsilon) "Calculated"
-mock_calc <- function(...) "Calculated"
+mock_calc <- function(x, sun_up, start_time, time_step, scale, location, method, n, epsilon, ...) "Calculated"
 mock_sunup <- function(x) "Sunup"
-fake_class <- function(x, ...) sum(x)
-fake_class2 <- function(x,y) return(function(x,...) "A forecast")
+fake_class <- function(x,y,z,q, m, ...) sum(x)
+fake_class2 <- function(x,y) return(function(x,y,z,q, m, ...) "A forecast")
 mock_get <- function(x,y) return(fake_class)
 start_time <- ymd(20161130)
 time_step <- 0.25

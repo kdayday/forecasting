@@ -7,22 +7,29 @@ Author: person("Kate", "Doubleday", email = "kate.doubleday@nrel.gov",
 Maintainer: Kate Doubleday <kate.doubleday@nrel.gov>                
 Description: Generate and evaluate probabilistic solar forecasts using 
     vine, Gaussian, and empirical copulas.
+Depends: 
+    locfit
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
-Suggests: 
-    colorspace,
-    copula,
-    corrplot,
+Imports: 
     EnvStats,
-    fanplot,
+    KernSmooth,
+    ks,
     lubridate,
+    MASS,
     plotly,
     pracma, 
-    RColorBrewer,
+    purrr,
     repr,
-    testthat,
+    rvinecopulib,
     scoringRules,
-    VineCopula,
+    stats
+Suggests:
+    colorspace,
+    corrplot,
+    fanplot,
+    RColorBrewer,
+    testthat,
     zeallot
 RoxygenNote: 6.1.0

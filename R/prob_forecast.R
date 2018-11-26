@@ -52,23 +52,24 @@ calc_is <- function(x, actual, alpha) {
 #' Plot probabilistic forecast's estimated pdf (with kde)
 #' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
 #' from the kde results.
-plot.prob_forecast <- function(x, ...) {
+plot.prob_forecast <- function(x, cvar=FALSE) {
   # Assume data is power or irradiance and must be non-negative
-  epdf <- stats::density(get_samples(x), from=0)
+  epdf <- stats::density(get_1d_samples(x), from=0)
   plot(epdf, xlab='Power [W]', ylab='Probability',
-       main='Estimated probability distribution', sub = paste("Location: ", x$location, ", Time:", x$time))
+       main='Estimated probability density', sub = paste("Location: ", x$location, ", Time:", x$time))
 
-  # Color in tails above/below desired epsilon's
-  i1 <- min(which(epdf$x >= x$var$low))
-  i2 <- max(which(epdf$x <= x$var$high))
-  graphics::lines(rep(x$var$low,times=2), c(0, epdf$y[i1]), col='black')
-  graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
-  graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(x$var$low,2), "\nCVaR: ", round(x$cvar$low,2)), pos=3)
+  if (cvar){# Color in tails above/below desired epsilon's
+    i1 <- min(which(epdf$x >= x$var$low))
+    i2 <- max(which(epdf$x <= x$var$high))
+    graphics::lines(rep(x$var$low,times=2), c(0, epdf$y[i1]), col='black')
+    graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
+    graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(x$var$low,2), "\nCVaR: ", round(x$cvar$low,2)), pos=3)
 
-  graphics::lines(rep(x$var$high,times=2), c(0, epdf$y[i2]), col='black')
-  last <- length(epdf$x)
-  graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
-  graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(x$var$high,2), "\nCVaR: ", round(x$cvar$high,2)), pos=3)
+    graphics::lines(rep(x$var$high,times=2), c(0, epdf$y[i2]), col='black')
+    last <- length(epdf$x)
+    graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
+    graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(x$var$high,2), "\nCVaR: ", round(x$cvar$high,2)), pos=3)
+  }
 }
 
 #' Check probabilistic forecast class
@@ -76,8 +77,14 @@ is.prob_forecast <- function(x) inherits(x, "prob_forecast")
 
 #' Register generic sample function
 #' @param x A prob_forecast object
-get_samples <- function(x) {
-    UseMethod("get_samples",x)
+get_1d_samples <- function(x) {
+    UseMethod("get_1d_samples",x)
+}
+
+#' Register generic joint density function
+#' @param x A Gaussian or vine copula n-dimension prob_forecast object
+get_joint_density_grid <- function(x, ...) {
+  UseMethod("get_joint_density_grid",x)
 }
 
 # Methods for aggregate probabilistic forecast class using vine copulas
@@ -90,18 +97,29 @@ get_samples <- function(x) {
 #' @param dat A matrix of training data [ntrain x nsites]
 #' @param location A string
 #' @param time A lubridate time stamp
+#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "method")
+#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "method")
 #' @param n An integer, number of copula samples to take
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+#' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_nd_vine_forecast <- function(dat, location, time,
-                                  n=3000, epsilon=c(0.05, 0.95)) {
+                                  training_transform_type="empirical", results_transform_type='empirical', n=3000,
+                                  epsilon=c(0.05, 0.95), ...) {
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
+  if (class(dat)!='matrix') stop('Input data must be a matrix')
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
 
-  model <- VineCopula::RVineStructureSelect(VineCopula::pobs(dat), indeptest=TRUE, familyset=c(0,1,2,3,4,5,6))
+  tr <- calc_transforms(dat, training_transform_type, results_transform_type, ...)
+  training_transforms <- tr$training
+  results_transforms <- tr$results
+
+  uniform_dat <- mapply(function(n, t) {to_uniform(t, dat[,n])}, colnames(dat, do.NULL=FALSE), training_transforms)
+  model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
 
   # Initialize probabilistic forecast
-  dat <- list(training_mat = dat,
+  dat <- list(training_transforms = training_transforms,
+              results_transforms = results_transforms,
               location = location,
               time = time,
               model = model,
@@ -112,7 +130,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
   x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  samples <- get_samples(x)
+  samples <- get_1d_samples(x)
   x$quantiles <- calc_quantiles(samples)
   results <- calc_cvar(samples, epsilon)
   x$cvar <- results$cvar
@@ -121,17 +139,89 @@ prob_nd_vine_forecast <- function(dat, location, time,
   return(x)
 }
 
+#' Calculate lists of variable-to-uniform domain transforms for all dimensions
+#'
+#' @param dat training data matrix
+#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "method")
+#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "method")
+#' @param ... Optional arguments to marg_transform
+#' @return list of "training" and "results" transforms to use.
+calc_transforms <- function(dat, training_transform_type, results_transform_type, ...) {
+  training <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, method=training_transform_type, ...)
+  # Results transforms must be subsequently updated if desired
+  if (results_transform_type==training_transform_type) {
+    results <- training
+  } else {
+    results <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, method=results_transform_type, ...)
+  }
+  return(list('training'=training, 'results'=results))
+}
+
+#' Subfunction for calc_transforms to cycle thorugh xmin and xmax if they are given uniquely for each dimension
+#'
+#' @param idx Column index of dat
+#' @param dat training data matrix over all the dimensions
+#' @param method marg_transform method
+#' @param ... Optional arguments to marg_transform, including potentially xmin or xmax in either scalar or vector form
+get_transform_with_unique_xmin_max <- function(idx, dat, method, ...) {
+  args <- list(...)
+  # Use unique xmin/xmax values if vectors are given
+  if ('xmin' %in% names(args) & length(args[['xmin']]) > 1) {args[['xmin']] <- args[['xmin']][idx]}
+  if ('xmax' %in% names(args) & length(args[['xmax']]) > 1) {args[['xmax']] <- args[['xmax']][idx]}
+  return(do.call(marg_transform, c(list(dat[,idx], method), args))) # repackage arguments into single list for do.call
+}
+
 #' Sample the vine copula model and sum to calculate samples of the univariate, aggregate power forecast
 #'
 #' @return A column matrix of aggregate powers
-get_samples.prob_nd_vine_forecast <- function(x) {
-  samples.u <- VineCopula::RVineSim(x$n, x$model)
+get_1d_samples.prob_nd_vine_forecast <- function(x) {
+  samples.u <- rvinecopulib::rvinecop(x$n, x$model)
   samples.xs <- matrix(nrow = x$n, ncol = length(x))
   for (i in 1:length(x)){
-    samples.xs[,i] <- stats::quantile(x$training_mat[,i], samples.u[,i], type=1, names=FALSE)
+    samples.xs[,i] <- from_uniform(x$results_transforms[[i]], samples.u[,i])
   }
   samples.x <- rowSums(samples.xs)
   return(samples.x)
+}
+
+
+#' Estimate the joint probability density
+#'
+#' @param x A prob_nd_vine_forecast object
+#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
+#' @return an joint probability density array
+get_joint_density_grid.prob_nd_vine_forecast <- function(x, k=100) {
+  # Get evaluation grid
+  eval_points <- get_variable_domain_grid(x, k)
+
+  # Calculate copula density
+  eval_points_copula <- mapply(FUN=function(c, n) {to_uniform(c, eval_points[,n])}, x$results_transforms,
+                               colnames(eval_points, do.NULL=FALSE))
+  copula_density <- rvinecopulib::dvinecop(eval_points_copula, x$model)
+
+  # Calculate the marginal densities
+  dmarg <- mapply(FUN=function(c, n) {to_probability(c, eval_points[,n])}, x$results_transforms,
+                  colnames(eval_points, do.NULL=FALSE))
+
+  # Calculate joint density as product the copula density and marginal densities
+  pdf <- copula_density * apply(dmarg, 1 , prod) # multiply across rows
+  return(list('grid_points'=eval_points, 'd'=pdf))
+}
+
+#' Get a grid of evaluation points in the variable domain, based on the range of the marginal distribution estimation
+#'
+#' @param x A prob_nd_vine_forecast object
+#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
+#' @return a grid of points size k^n
+get_variable_domain_grid <- function(x, k) {
+  if (length(k)==1){
+    k <- rep(k, times=length(x))
+  } else if (length(k) != length(x)) stop('Bad input. k must be length 1 or of same dimension as the forecast')
+  if (any(k < 2)) stop('Bad input. All values in k must be at least 2.')
+
+  grid_list <-mapply(x$results_transforms, k, FUN=function(tr, k) {seq(tr$xmin, tr$xmax, length.out=k)}, SIMPLIFY = FALSE)
+  pts <- expand.grid(grid_list)
+  return(pts)
 }
 
 # Methods for aggregate probabilistic forecast class using Gaussian copulas
@@ -156,7 +246,17 @@ prob_nd_gaussian_forecast <- function(dat, location, time,
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_nd_gaussian_forecast <- function(x) {
+get_1d_samples.prob_nd_gaussian_forecast <- function(x) {
+  stop('Not implemented')
+}
+
+
+#' Estimate the joint probability density
+#'
+#' @param x A prob_nd_gaussian_forecast object
+#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
+#' @return an joint probability density array
+get_joint_density_grid.prob_nd_gaussian_forecast <- function(x, k=100) {
   stop('Not implemented')
 }
 
@@ -183,7 +283,7 @@ prob_nd_empirical_forecast <- function(dat, location, time,
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_nd_empirical_forecast <- function(x) {
+get_1d_samples.prob_nd_empirical_forecast <- function(x) {
   stop('Not implemented')
 }
 
@@ -220,7 +320,7 @@ prob_1d_rank_forecast <- function(dat, location, time, ...) {
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_1d_rank_forecast <- function(x) {
+get_1d_samples.prob_1d_rank_forecast <- function(x) {
   stop('Not implemented')
 }
 
@@ -259,7 +359,7 @@ prob_1d_ensemble_forecast <- function(dat, location, time,
 #'
 #' @param x A prob_forecast object
 #' @return A column matrix of aggregate powers
-get_samples.prob_1d_ensemble_forecast <- function(x) {
+get_1d_samples.prob_1d_site_forecast <- function(x) {
   stop('Not implemented')
 }
 
