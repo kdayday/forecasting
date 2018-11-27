@@ -310,32 +310,42 @@ get_1d_samples.prob_nd_empirical_forecast <- function(x) {
 
 
 #' Initialize a univariate probabilistic power forecast for a specific time point by ranking ensemble members.
-#' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
+#' Its rank quantiles are the basic quantiles estimated from the ensemble members; the quantiles are the rank quantiles iterpolated
+#' to the quantiles of interest (i.e., 10%, 20%, etc...)
 #'
-#' @param dat A matrix of ensemble members, [ntrain x 1]
+#' @param dat A numeric vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_1d_rank_forecast <- function(dat, location, time, ...) {
-  if (dim(dat)[2] > 1) stop('Training data must be of dimensions [ntrain x 1] for univariate forecasts.')
-
-  stop("Not implemented")
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
+              rank_quantiles = list(x=sort(dat), y=(rank(sort(dat))-1)/(length(dat)-1)),
               time = time,
               d = 1)
 
   x <- structure(dat, class = c("prob_forecast", "prob_1d_rank_forecast"))
-
-  x$quantiles <- calc_quantiles(dat)
+  x$quantiles <- calc_quantiles(x)
 
   return(x)
 }
 
 #' Check class
 is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
+
+#' Calculate forecast quantiles from samples of the vine copula
 #'
+#' @param x prob_1d_rank_forecast object
+#' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
+#' @return A named numeric vector of estimated quantiles
+calc_quantiles.prob_1d_rank_forecast <- function(x, quantile_density=0.1) {
+  if (quantile_density <= 0 | quantile_density >= 1) stop('Bad input. Quantile density must be in (0,1).')
+  yseq <- seq(0, 1, by=quantile_density)
+  xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=yseq)$y
+
+  names(xseq) <- sapply(yseq, FUN=function(y) return(paste(y*100, "%", sep='')))
+  return(xseq)
 }
 
 # ---------------------------------------------------------------------------------------------

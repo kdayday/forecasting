@@ -179,3 +179,29 @@ test_that('get_joint_density_grid calc is correct', {
   expect_equal(out$d, c(11.1, 22.4, 24.2, 48.8, 42.2, 84.8, 88.4, 177.6))
   expect_equal(dim(out$grid_points), c(8,3))
 })
+
+# -----------------------------------------------------------------------------------------------------------
+# 1d rank forecast tests
+
+
+test_that("Basic vine copula forecast initialization is correct.", {
+  with_mock(calc_quantiles=mock_pd,
+            OUT <- prob_1d_rank_forecast(c(2, 4, 3), location='Odessa', time=1))
+  expect_true(is.prob_1d_rank_forecast((OUT)))
+  expect_equal(length(OUT), 1)
+  expect_equal(OUT$rank_quantiles$x, c(2, 3, 4))
+  expect_equal(OUT$rank_quantiles$y, c(0, 0.5, 1))
+})
+
+
+test_that('1d rank forecast quantile calculation is correct', {
+  fake_forecast <- structure(list(rank_quantiles=list(x=c(0, 5, 10), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
+  OUT <- calc_quantiles(fake_forecast, quantile_density=0.25)
+  expect_equal(unname(OUT), seq(0, 10, by=2.5))
+  expect_equal(names(OUT), c("0%", "25%", "50%", "75%", "100%"))
+})
+
+test_that('1d rank forecast quantile calculation throws errors', {
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantile_density=1), "Bad input*")
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantile_density=-0.1), "Bad input*")
+})
