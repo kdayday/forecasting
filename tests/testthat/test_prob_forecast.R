@@ -13,7 +13,7 @@ test_that("Basic vine copula forecast initialization is correct.", {
             vinecop=function(x, ...) NA, calc_transforms=function(...) list('training'='tr', 'results'='res'),
             to_uniform=function(...) "To uniform",
   OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', time=1,  n=3000))
-  expect_true(is.prob_forecast((OUT)))
+  expect_true(is.prob_nd_vine_forecast((OUT)))
   expect_equal(length(OUT), 2)
 })
 

@@ -7,7 +7,7 @@ library(kde1d)
 # -----------------------------------------------------------------------------
 # Test containers for existing distribution estimation functions
 
-test_that("probempirical handles both a given xmax", {
+test_that("probempirical handles a given xmax", {
   out <- probempirical(c(1,2, 4), xmax=5)
   expect_equal(out$x, c(0, 1, 2, 4, 5))
   expect_equal(out$u, c(0, 0.25, 0.5, 0.75, 1))

@@ -121,6 +121,9 @@ prob_nd_vine_forecast <- function(dat, location, time,
   return(x)
 }
 
+#' Check class
+is.prob_nd_vine_forecast <- function(x) inherits(x, "prob_nd_vine_forecast")
+
 #' Calculate lists of variable-to-uniform domain transforms for all dimensions
 #'
 #' @param dat training data matrix
@@ -252,6 +255,9 @@ prob_nd_gaussian_forecast <- function(dat, location, time, n=3000, ...) {
   stop('Not implemented')
 }
 
+#' Check class
+is.prob_nd_gaussian_forecast <- function(x) inherits(x, "prob_nd_gaussian_forecast")
+
 #' Sample the gaussian copula model and sum to calculate samples of the univariate, aggregate power forecast
 #'
 #' @param x A prob_forecast object
@@ -286,6 +292,10 @@ prob_nd_empirical_forecast <- function(dat, location, time, n=3000) {
   if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for empirical copula forecast.')
   stop('Not implemented')
 }
+
+#' Check class
+is.prob_nd_empirical_forecast <- function(x) inherits(x, "prob_nd_empirical_forecast")
+
 
 #' Sample the empirical copula model and sum to calculate samples of the univariate, aggregate power forecast
 #'
@@ -323,24 +333,21 @@ prob_1d_rank_forecast <- function(dat, location, time, ...) {
   return(x)
 }
 
-#' Sample the probabilistic forecast
+#' Check class
+is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
 #'
-#' @param x A prob_forecast object
-#' @return A column matrix of aggregate powers
-get_1d_samples.prob_1d_rank_forecast <- function(x) {
-  stop('Not implemented')
 }
 
+# ---------------------------------------------------------------------------------------------
 
-#' Initialize a univariate probabilistic power forecast for a specific time point with historical analogs.
-#' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
+#' Initialize a univariate probabilistic power forecast for a specific time point using kernel density estimation. See kde_methods. R for more details
 #'
 #' @param dat A matrix of ensemble members, [ntrain x 1]
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param nmem An integer, number of ensemble members to take
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_1d_ensemble_forecast <- function(dat, location, time,
+prob_1d_kde_forecast <- function(dat, location, time,
                                   nmem=20, ...) {
   if (dim(dat)[2] > 1) stop('Training data must be of dimensions [ntrain x 1] for univariate forecasts.')
 
@@ -352,7 +359,7 @@ prob_1d_ensemble_forecast <- function(dat, location, time,
               d = 1,
               nmem=nmem
   )
-  x <- structure(dat, class = c("prob_forecast", "prob_1d_ensemble_forecast"))
+  x <- structure(dat, class = c("prob_forecast", "prob_1d_kde_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
   x$quantiles <- calc_quantiles(dat)
@@ -360,11 +367,5 @@ prob_1d_ensemble_forecast <- function(dat, location, time,
   return(x)
 }
 
-#' Sample the probabilistic forecast
-#'
-#' @param x A prob_forecast object
-#' @return A column matrix of aggregate powers
-get_1d_samples.prob_1d_site_forecast <- function(x) {
-  stop('Not implemented')
-}
-
+#' Check class
+is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
