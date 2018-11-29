@@ -3,6 +3,7 @@ context("Test forecasting context")
 library(forecasting)
 library(KernSmooth)
 library(kde1d)
+library(pracma)
 
 # -----------------------------------------------------------------------------
 # Test containers for existing distribution estimation functions

@@ -81,20 +81,21 @@ test_that("CVAR estimate is correct", {
   # Test sample over-ride
   fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
   OUT <- calc_cvar(fake_x, samples=0:100, epsilon=c(0.05, 0.95))
-  expect_equal(OUT$cvar$low, 2.5)
-  expect_equal(OUT$var$low, 5)
-  expect_equal(OUT$cvar$high, 97.5)
-  expect_equal(OUT$var$high, 95)
+  expect_equal(OUT, list(cvar=list(low=2.5, high=97.5), var=list(low=5, high=95)))
   # Test default sampling
   with_mock(get_1d_samples=function(...) return(0:100),
             OUT2 <-calc_cvar(fake_x, epsilon=c(0.05, 0.95)))
   expect_equal(OUT2$var$high, 95)
 })
 
-test_that("CVAR calculation throws errors", {
+test_that("CVAR calculations throws errors", {
   fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
   expect_error(calc_cvar(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, 2)), "Bad input*")
   expect_error(calc_cvar(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, -0.1)), "Bad input*")
+
+  fake_x <- structure(list(), class = c("prob_forecast", "prob_1d_kde_forecast"))
+  expect_error(calc_cvar(fake_x,epsilon=c(0.5, 2)), "Bad input*")
+  expect_error(calc_cvar(fake_x, epsilon=c(0.5, -0.1)), "Bad input*")
 })
 
 test_that("Vine copula quantile calculation adjusts for inputs", {
@@ -184,7 +185,7 @@ test_that('get_joint_density_grid calc is correct', {
 # 1d rank forecast tests
 
 
-test_that("Basic vine copula forecast initialization is correct.", {
+test_that("1d rank forecast initialization is correct.", {
   with_mock(calc_quantiles=mock_pd,
             OUT <- prob_1d_rank_forecast(c(2, 4, 3), location='Odessa', time=1))
   expect_true(is.prob_1d_rank_forecast((OUT)))
@@ -204,4 +205,29 @@ test_that('1d rank forecast quantile calculation is correct', {
 test_that('1d rank forecast quantile calculation throws errors', {
   expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantile_density=1), "Bad input*")
   expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantile_density=-0.1), "Bad input*")
+})
+
+test_that("1D KDE forecast initialization is correct.", {
+  with_mock(probempirical=function(dat, anoption= 'b', ...) return(paste(anoption, 'model', sep=' ')),
+            calc_quantiles=function(...) return(NA),
+            OUT <- prob_1d_kde_forecast(c(2, 4, 3), location='Odessa', time=1, method='empirical', anoption='a'))
+  expect_true(is.prob_1d_kde_forecast((OUT)))
+  expect_equal(length(OUT), 1)
+  expect_equal(OUT$model, 'a model')
+})
+
+test_that('1d kde forecast quantile calculation is correct', {
+  fake_forecast <- structure(list(model=list(x=c(0, 5, 10), u=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_kde_forecast"))
+  OUT <- calc_quantiles(fake_forecast, quantile_density=0.25)
+  expect_equal(unname(OUT), seq(0, 10, by=2.5))
+  expect_equal(names(OUT), c("0%", "25%", "50%", "75%", "100%"))
+})
+
+test_that("1d KDE CVAR estimate is correct", {
+  fake_x <- structure(list(model=list(x=seq(5, 105, by=10), u=seq(0, 1, by=0.1), d=rep(0.01, times=11))), class = c("prob_forecast", "prob_1d_kde_forecast"))
+
+  OUT <- calc_cvar(fake_x, epsilon=c(0.2, 0.8))
+
+  # Low side: CVAR = (1/0.2)*trapz from (5,0.05) to (25, 0.25) = (1/0.2)*3 = 15
+  expect_equal(OUT, list(cvar=list(low=15, high=95), var=list(low=25, high=85)))
 })

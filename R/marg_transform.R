@@ -7,12 +7,7 @@
 marg_transform <- function(x, method='geenens', ... ) {
   if (class(method) != 'character') stop('Method selection must be a character name.')
 
-  func <- switch(method,
-         empirical = probempirical,
-         kde1d = probkde1d,
-         geenens = probtranskde,
-         kernsmooth = probkde,
-         stop(paste("Marginal distribution estimator ", method, " not recognized.", sep='')))
+  func <- kde_lookup(method)
 
   # Get selected marginal estimate
   res <- func(x, ...)

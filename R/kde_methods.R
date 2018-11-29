@@ -1,3 +1,16 @@
+#' Look-up function for the methods implemented here
+#'
+#' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth'
+#' @return A function
+kde_lookup <- function(method) {
+  func <- switch(method,
+                 empirical = probempirical,
+                 kde1d = probkde1d,
+                 geenens = probtranskde,
+                 kernsmooth = probkde,
+                 stop(paste("Marginal distribution estimator ", method, " not recognized.", sep='')))
+  return(func)
+}
 
 # -------------------------------------------------------------------------
 # Containers for existing distribution estimation functions

@@ -82,6 +82,8 @@ get_forecast_class <- function(scale, method){
     return(switch(tolower(method),
                   "rank" = prob_1d_rank_forecast,
                   "r" = prob_1d_rank_forecast,
+                  "kde" = prob_1d_kde_forecast,
+                  "k" = prob_1d_kde_forecast,
                   stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' '))))
   } else if (tolower(scale) %in% c("region", "total", "r", "t")){
     return(switch(tolower(method),

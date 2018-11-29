@@ -36,6 +36,7 @@ test_that("ts_forecast calculation inserts NA's when sun is down", {
 })
 
 test_that("ts_forecast class lookup is correct", {
+  expect_identical(get_forecast_class('S', 'kde'), prob_1d_kde_forecast)
   expect_identical(get_forecast_class('S', 'rank'), prob_1d_rank_forecast)
   expect_identical(get_forecast_class('r', 'vine'), prob_nd_vine_forecast)
   expect_identical(get_forecast_class('Total', 'gaussian'), prob_nd_gaussian_forecast)

@@ -308,7 +308,6 @@ get_1d_samples.prob_nd_empirical_forecast <- function(x) {
 # Methods for univariate probabilistic forecast class
 #------------------------------------------------------------------------------
 
-
 #' Initialize a univariate probabilistic power forecast for a specific time point by ranking ensemble members.
 #' Its rank quantiles are the basic quantiles estimated from the ensemble members; the quantiles are the rank quantiles iterpolated
 #' to the quantiles of interest (i.e., 10%, 20%, etc...)
@@ -334,7 +333,7 @@ prob_1d_rank_forecast <- function(dat, location, time, ...) {
 #' Check class
 is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
 
-#' Calculate forecast quantiles from samples of the vine copula
+#' Calculate forecast quantiles
 #'
 #' @param x prob_1d_rank_forecast object
 #' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
@@ -350,32 +349,65 @@ calc_quantiles.prob_1d_rank_forecast <- function(x, quantile_density=0.1) {
 
 # ---------------------------------------------------------------------------------------------
 
-#' Initialize a univariate probabilistic power forecast for a specific time point using kernel density estimation. See kde_methods. R for more details
+#' Initialize a univariate probabilistic power forecast for a specific time point using kernel density estimation. See kde_methods.R for more details
 #'
-#' @param dat A matrix of ensemble members, [ntrain x 1]
+#' @param dat A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @param nmem An integer, number of ensemble members to take
+#' @param method KDE method selection, see kde_methods.R for details
+#' @param ... Additional parameters passed on the KDE method
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_1d_kde_forecast <- function(dat, location, time,
-                                  nmem=20, ...) {
-  if (dim(dat)[2] > 1) stop('Training data must be of dimensions [ntrain x 1] for univariate forecasts.')
+prob_1d_kde_forecast <- function(dat, location, time, method='geenens', ...) {
 
-  stop("Not implemented.")
+  func <- kde_lookup(method)
+  # Get selected KDE
+  model <- func(dat, ...)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
               time = time,
               d = 1,
-              nmem=nmem
-  )
+              model=model
+              )
   x <- structure(dat, class = c("prob_forecast", "prob_1d_kde_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  x$quantiles <- calc_quantiles(dat)
-
+  x$quantiles <- calc_quantiles(x)
   return(x)
 }
 
 #' Check class
 is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
+
+#' Calculate forecast quantiles from KDE
+#'
+#' @param x prob_1d_kde_forecast object
+#' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
+#' @return A named numeric vector of estimated quantiles
+calc_quantiles.prob_1d_kde_forecast <- function(x, quantile_density=0.1) {
+  if (quantile_density <= 0 | quantile_density >= 1) stop('Bad input. Quantile density must be in (0,1).')
+  yseq <- seq(0, 1, by=quantile_density)
+  xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=yseq)$y
+
+  names(xseq) <- sapply(yseq, FUN=function(y) return(paste(y*100, "%", sep='')))
+  return(xseq)
+}
+
+#' Calculate VaR and CVaR by trapezoidal integration.
+#'
+#' @param x prob_1d_kde_forecast object
+#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
+#' @return list of var, cvar
+calc_cvar.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
+  if (any(epsilon <= 0) | any(epsilon >= 1)) stop("Bad input. Epsilon's must be in (0,1).")
+
+  var_low <- stats::approx(x=x$model$u, y=x$model$x, xout=epsilon[1])$y
+  idx <- min(which(x$model$x >= var_low))
+  cvar_low <- (1/epsilon[1])*pracma::trapz(x$model$x[1:idx]*x$model$d[1:idx], x$model$x[1:idx])
+
+  var_high <- stats::approx(x=x$model$u, y=x$model$x, xout=epsilon[2])$y
+  idx <- max(which(x$model$x <= var_high))
+  cvar_high <- (1/(1-epsilon[2]))*pracma::trapz(x$model$x[-(1:(idx-1))]*x$model$d[-(1:(idx-1))], x$model$x[-(1:(idx-1))])
+
+  return(list('cvar' = list('low'=cvar_low,'high' = cvar_high), 'var'=list('low'=var_low, 'high'=var_high)))
+}
