@@ -194,6 +194,9 @@ test_that("1d rank forecast initialization is correct.", {
   expect_equal(OUT$rank_quantiles$y, c(0, 0.5, 1))
 })
 
+test_that("1D rank forecast initialization throws error.", {
+  expect_error(prob_1d_rank_forecast(matrix(c(2, 4, 3)), location='Odessa', time=1), "Input data*")
+})
 
 test_that('1d rank forecast quantile calculation is correct', {
   fake_forecast <- structure(list(rank_quantiles=list(x=c(0, 5, 10), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
@@ -216,6 +219,10 @@ test_that("1D KDE forecast initialization is correct.", {
   expect_equal(OUT$model, 'a model')
 })
 
+test_that("1D KDE forecast initialization throws error.", {
+  expect_error(prob_1d_kde_forecast(matrix(c(2, 4, 3)), location='Odessa', time=1, method='empirical', anoption='a'), "Input data*")
+})
+
 test_that('1d kde forecast quantile calculation is correct', {
   fake_forecast <- structure(list(model=list(x=c(0, 5, 10), u=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_kde_forecast"))
   OUT <- calc_quantiles(fake_forecast, quantile_density=0.25)
@@ -225,7 +232,6 @@ test_that('1d kde forecast quantile calculation is correct', {
 
 test_that("1d KDE CVAR estimate is correct", {
   fake_x <- structure(list(model=list(x=seq(5, 105, by=10), u=seq(0, 1, by=0.1), d=rep(0.01, times=11))), class = c("prob_forecast", "prob_1d_kde_forecast"))
-
   OUT <- calc_cvar(fake_x, epsilon=c(0.2, 0.8))
 
   # Low side: CVAR = (1/0.2)*trapz from (5,0.05) to (25, 0.25) = (1/0.2)*3 = 15

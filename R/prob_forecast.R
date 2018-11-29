@@ -333,6 +333,7 @@ get_1d_samples.prob_nd_empirical_forecast <- function(x) {
 #' @param time A lubridate time stamp
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_1d_rank_forecast <- function(dat, location, time, ...) {
+  if (!is.vector(dat)) stop("Input data must be a vector.")
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
@@ -382,6 +383,7 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 #' @param ... Additional parameters passed on the KDE method
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_1d_kde_forecast <- function(dat, location, time, method='geenens', ...) {
+  if (!is.vector(dat)) stop("Input data must be a vector.")
 
   func <- kde_lookup(method)
   # Get selected KDE
