@@ -23,29 +23,12 @@ calc_is <- function(x, actual, alpha) {
   is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
 }
 
-#' Plot probabilistic forecast's estimated pdf (with kde)
-#' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
-#' from the kde results.
-plot.prob_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95)) {
-  # Assume data is power or irradiance and must be non-negative
-  samples <- get_1d_samples(x)
-  epdf <- stats::density(samples, from=0)
-  plot(epdf, xlab='Power [W]', ylab='Probability',
-       main='Estimated probability density', sub = paste("Location: ", x$location, ", Time:", x$time))
 
-  if (cvar){# Color in tails above/below desired epsilon's
-    cvar_info <- calc_cvar(samples, epsilon)
-    i1 <- min(which(epdf$x >= cvar_info$var$low))
-    i2 <- max(which(epdf$x <= cvar_info$var$high))
-    graphics::lines(rep(cvar_info$var$low,times=2), c(0, epdf$y[i1]), col='black')
-    graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
-    graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(cvar_info$var$low,2), "\nCVaR: ", round(cvar_info$cvar$low,2)), pos=3)
 
-    graphics::lines(rep(cvar_info$var$high,times=2), c(0, epdf$y[i2]), col='black')
-    last <- length(epdf$x)
-    graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
-    graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(cvar_info$var$high,2), "\nCVaR: ", round(cvar_info$cvar$high,2)), pos=3)
-  }
+#' Plot probabilistic forecast's quantiles
+plot.prob_forecast <- function(x) {
+  plot(x$quantiles, seq(0, 1, length.out = length(x$quantiles)), xlab='Power [W]', ylab='Cumulative Density',
+       main='Quantiles', sub = paste("Location: ", x$location, ", Time:", x$time))
 }
 
 #' Check probabilistic forecast class
@@ -75,6 +58,12 @@ calc_cvar <- function(x, ...) {
   UseMethod("calc_cvar",x)
 }
 
+
+#' Register generic plot function
+#' @param x A prob_forecast object
+plot_pdf <- function(x, ...) {
+  UseMethod("plot_pdf",x)
+}
 
 # Methods for aggregate probabilistic forecast class using vine copulas
 #------------------------------------------------------------------------------
@@ -239,6 +228,33 @@ get_variable_domain_grid <- function(x, k) {
   return(pts)
 }
 
+#' Plot probabilistic forecast's estimated pdf (with kde)
+#' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
+#' from the kde results.
+#'
+#' @param x prob_nd_vine_forecast object
+plot_pdf.prob_nd_vine_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95)) {
+  # Assume data is power or irradiance and must be non-negative
+  samples <- get_1d_samples(x)
+  epdf <- stats::density(samples, from=0)
+  plot(epdf, xlab='Power [W]', ylab='Probability',
+       main='Estimated probability density', sub = paste("Location: ", x$location, ", Time:", x$time))
+
+  if (cvar){# Color in tails above/below desired epsilon's
+    cvar_info <- calc_cvar(x, samples=samples, epsilon=epsilon)
+    i1 <- min(which(epdf$x >= cvar_info$var$low))
+    i2 <- max(which(epdf$x <= cvar_info$var$high))
+    graphics::lines(rep(cvar_info$var$low,times=2), c(0, epdf$y[i1]), col='black')
+    graphics::polygon(c(0,epdf$x[1:i1],epdf$x[i1]), c(0, epdf$y[1:i1],0), col='red')
+    graphics::text(epdf$x[i1], epdf$y[i1], paste("VaR: ", round(cvar_info$var$low,2), "\nCVaR: ", round(cvar_info$cvar$low,2)), pos=3)
+
+    graphics::lines(rep(cvar_info$var$high,times=2), c(0, epdf$y[i2]), col='black')
+    last <- length(epdf$x)
+    graphics::polygon(c(epdf$x[i2], epdf$x[i2:last], epdf$x[last]), c(0, epdf$y[i2:last], 0), col='red')
+    graphics::text(epdf$x[i2], epdf$y[i2], paste("VaR: ", round(cvar_info$var$high,2), "\nCVaR: ", round(cvar_info$cvar$high,2)), pos=3)
+  }
+}
+
 # Methods for aggregate probabilistic forecast class using Gaussian copulas
 #------------------------------------------------------------------------------
 
@@ -347,6 +363,14 @@ calc_quantiles.prob_1d_rank_forecast <- function(x, quantile_density=0.1) {
   return(xseq)
 }
 
+
+#' Not implemented
+#'
+#' @param x prob_1d_rank_forecast object
+plot_pdf.prob_1d_rank_forecast <- function(x) {
+  stop("Not implemented for 1D rank forecasts.")
+}
+
 # ---------------------------------------------------------------------------------------------
 
 #' Initialize a univariate probabilistic power forecast for a specific time point using kernel density estimation. See kde_methods.R for more details
@@ -410,4 +434,13 @@ calc_cvar.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
   cvar_high <- (1/(1-epsilon[2]))*pracma::trapz(x$model$x[-(1:(idx-1))]*x$model$d[-(1:(idx-1))], x$model$x[-(1:(idx-1))])
 
   return(list('cvar' = list('low'=cvar_low,'high' = cvar_high), 'var'=list('low'=var_low, 'high'=var_high)))
+}
+
+
+#' Plot probability density
+#'
+#' @param x prob_1d_kde_forecast object
+plot_pdf.prob_1d_kde_forecast <- function(x) {
+  plot(fc_kde$model$x, fc_kde$model$d, xlab='Power [W]', ylab='Probability density', sub = paste("Location: ", x$location, ", Time:", x$time),
+       type='l', lwd=2)
 }
