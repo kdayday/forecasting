@@ -3,6 +3,8 @@
 #' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth'
 #' @return A function
 kde_lookup <- function(method) {
+  if (class(method) != 'character') stop('Method selection must be a character name.')
+
   func <- switch(method,
                  empirical = probempirical,
                  kde1d = probkde1d,

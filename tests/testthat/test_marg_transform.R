@@ -5,9 +5,6 @@ library(pracma)
 
 # ----------------------------------------------------------------------
 # Constructor tests
-test_that("marg_transform constructor throws errors", {
-  expect_error(marg_tranform(c(1, 2, 3, 4), method='probtranskde'))
-})
 
 test_that("marg_transform constructor assignments are correct",{
   with_mock(probempirical=function(x, ...) return(list('x'=x-1, 'd'=x+2, 'u'=x+1)),

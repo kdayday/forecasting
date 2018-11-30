@@ -1,13 +1,12 @@
 #' A structure for transforming back and forth to uniform domain
 #'
 #' @param x A vector of samples
-#' @param method Method for estimating the marginal distribution. One of 'empirical', 'kde1d', 'geenens', 'kernsmooth'
+#' @param cdf.method Method for estimating the marginal distribution. One of 'empirical', 'kde1d', 'geenens', 'kernsmooth'
 #' @param ... Optional arguments to the distribution estimator. 'xmax' can be used for 'kde1d' and 'geenens'
 #' @return
-marg_transform <- function(x, method='geenens', ... ) {
-  if (class(method) != 'character') stop('Method selection must be a character name.')
+marg_transform <- function(x, cdf.method='geenens', ... ) {
 
-  func <- kde_lookup(method)
+  func <- kde_lookup(cdf.method)
 
   # Get selected marginal estimate
   res <- func(x, ...)
@@ -19,7 +18,7 @@ marg_transform <- function(x, method='geenens', ... ) {
               'u'=res$u,
               'xmin' = min(res$x),
               'xmax' = max(res$x),
-              'method' = method)
+              'method' = cdf.method)
   if (dat$xmin != 0) warning(paste("Lower boundary of support is ", dat$xmin, " rather than 0.", sep=''))
 
   x <- structure(dat, class = c("marg_transform"))

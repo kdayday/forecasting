@@ -19,7 +19,7 @@ test_that("Basic vine copula forecast initialization is correct.", {
 
 test_that("Marginal distribution optional arguments are passed through.", {
   # This actually goes through calc_transforms as well now, which I haven't bothered changing.
-  with_mock(marg_transform=function(x, method='default', anoption=NA) return(list(method=method, anoption=anoption)),
+  with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, calc_cvar=mock_eval,
             out <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'TX', 'time',
@@ -31,7 +31,7 @@ test_that("Marginal distribution optional arguments are passed through.", {
 test_that("Marginal distribution optional arguments are passed through and prob forecast optional arguments are extracted.", {
   fake_forecast_class_call <- function(x, location='TX', time='a time', n=3000,  ...){
     prob_nd_vine_forecast(x, location=location, time=time, n=n, ...)}
-  with_mock(marg_transform=function(x, method='default', anoption=NA) return(list(method=method, anoption=anoption)),
+  with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, calc_cvar=mock_eval,
             out <- fake_forecast_class_call(matrix(c(0,0,0,0), ncol=2), location='TX', time='sometime',
@@ -49,25 +49,25 @@ test_that("Vine copula forecast initialization throws errors", {
 
 test_that("get_transform_with_unique_xmin_max handles optional arguments correctly", {
   # Test xmin and xmax are lists
-  mock_trans <- function(x, method=method, ...) {return(list(...))}
+  mock_trans <- function(x, cdf.method, ...) {return(list(...))}
   with_mock(marg_transform=mock_trans,
-            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method', athing='a', xmin=c(4, 5), xmax=8))
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), cdf.method='a method', athing='a', xmin=c(4, 5), xmax=8))
   expect_equal(out, list(athing='a', xmin=5, xmax=8))
   with_mock(marg_transform=mock_trans,
-            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method', athing='a', xmin=4, xmax=c(5, 6)))
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), cdf.method='a method', athing='a', xmin=4, xmax=c(5, 6)))
   expect_equal(out, list(athing='a', xmin=4, xmax=6))
   # No xmin or xmax
   with_mock(marg_transform=mock_trans,
-            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method', athing='a'))
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), cdf.method='a method', athing='a'))
   expect_equal(out, list(athing='a'))
   # No arguments
   with_mock(marg_transform=mock_trans,
-            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), method='a method'))
+            out <- get_transform_with_unique_xmin_max(2, matrix(c(0, 1, 2, 3), ncol=2), cdf.method='a method'))
   expect_equal(length(out), 0)
 })
 
 test_that("calc_transforms handles inputs correctly", {
-  mock_get_trans <- function(idx, dat, method, ...) {if (method=='a') return(sum(dat[,idx])) else return(diff(dat[,idx]))}
+  mock_get_trans <- function(idx, dat, cdf.method, ...) {if (cdf.method=='a') return(sum(dat[,idx])) else return(diff(dat[,idx]))}
   with_mock(get_transform_with_unique_xmin_max=mock_get_trans,
             out <-calc_transforms(matrix(c(5, 2, 7, 1), ncol=2), training_transform_type='a', results_transform_type='b', something='else'))
   expect_equal(out$training, list(7, 8))
@@ -213,14 +213,14 @@ test_that('1d rank forecast quantile calculation throws errors', {
 test_that("1D KDE forecast initialization is correct.", {
   with_mock(probempirical=function(dat, anoption= 'b', ...) return(paste(anoption, 'model', sep=' ')),
             calc_quantiles=function(...) return(NA),
-            OUT <- prob_1d_kde_forecast(c(2, 4, 3), location='Odessa', time=1, method='empirical', anoption='a'))
+            OUT <- prob_1d_kde_forecast(c(2, 4, 3), location='Odessa', time=1, cdf.method='empirical', anoption='a'))
   expect_true(is.prob_1d_kde_forecast((OUT)))
   expect_equal(length(OUT), 1)
   expect_equal(OUT$model, 'a model')
 })
 
 test_that("1D KDE forecast initialization throws error.", {
-  expect_error(prob_1d_kde_forecast(matrix(c(2, 4, 3)), location='Odessa', time=1, method='empirical', anoption='a'), "Input data*")
+  expect_error(prob_1d_kde_forecast(matrix(c(2, 4, 3)), location='Odessa', time=1, cdf.method='empirical', anoption='a'), "Input data*")
 })
 
 test_that('1d kde forecast quantile calculation is correct', {

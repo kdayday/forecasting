@@ -75,8 +75,8 @@ plot_pdf <- function(x, ...) {
 #' @param dat A matrix of training data [ntrain x nsites]
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "method")
-#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "method")
+#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "cdf.method")
+#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "cdf.method")
 #' @param n An integer, number of copula samples to take
 #' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
@@ -116,17 +116,17 @@ is.prob_nd_vine_forecast <- function(x) inherits(x, "prob_nd_vine_forecast")
 #' Calculate lists of variable-to-uniform domain transforms for all dimensions
 #'
 #' @param dat training data matrix
-#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "method")
-#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "method")
+#' @param training_transform_type Transform of training data into uniform domain (see marg_transform "cdf.method")
+#' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "cdf.method")
 #' @param ... Optional arguments to marg_transform
 #' @return list of "training" and "results" transforms to use.
 calc_transforms <- function(dat, training_transform_type, results_transform_type, ...) {
-  training <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, method=training_transform_type, ...)
+  training <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, cdf.method=training_transform_type, ...)
   # Results transforms must be subsequently updated if desired
   if (results_transform_type==training_transform_type) {
     results <- training
   } else {
-    results <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, method=results_transform_type, ...)
+    results <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, cdf.method=results_transform_type, ...)
   }
   return(list('training'=training, 'results'=results))
 }
@@ -135,14 +135,14 @@ calc_transforms <- function(dat, training_transform_type, results_transform_type
 #'
 #' @param idx Column index of dat
 #' @param dat training data matrix over all the dimensions
-#' @param method marg_transform method
+#' @param cdf.method marg_transform cdf.method
 #' @param ... Optional arguments to marg_transform, including potentially xmin or xmax in either scalar or vector form
-get_transform_with_unique_xmin_max <- function(idx, dat, method, ...) {
+get_transform_with_unique_xmin_max <- function(idx, dat, cdf.method, ...) {
   args <- list(...)
   # Use unique xmin/xmax values if vectors are given
   if ('xmin' %in% names(args) & length(args[['xmin']]) > 1) {args[['xmin']] <- args[['xmin']][idx]}
   if ('xmax' %in% names(args) & length(args[['xmax']]) > 1) {args[['xmax']] <- args[['xmax']][idx]}
-  return(do.call(marg_transform, c(list(dat[,idx], method), args))) # repackage arguments into single list for do.call
+  return(do.call(marg_transform, c(list(dat[,idx], cdf.method), args))) # repackage arguments into single list for do.call
 }
 
 #' Sample the vine copula model and sum to calculate samples of the univariate, aggregate power forecast
@@ -379,13 +379,13 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 #' @param dat A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @param method KDE method selection, see kde_methods.R for details
+#' @param cdf.method KDE method selection, see kde_methods.R for details
 #' @param ... Additional parameters passed on the KDE method
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_1d_kde_forecast <- function(dat, location, time, method='geenens', ...) {
+prob_1d_kde_forecast <- function(dat, location, time, cdf.method='geenens', ...) {
   if (!is.vector(dat)) stop("Input data must be a vector.")
 
-  func <- kde_lookup(method)
+  func <- kde_lookup(cdf.method)
   # Get selected KDE
   model <- func(dat, ...)
 
