@@ -34,7 +34,7 @@ ts_forecast <- function(x, start_time, time_step, scale, location, method, ...) 
 #' @param x A matrix
 #' @return A boolean
 check_sunup <- function(x){
-  return(any(x>0))
+  return(any(x>0, na.rm=TRUE))
 }
 
 #' Calculate a time series list of power forecasts.
