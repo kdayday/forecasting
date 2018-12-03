@@ -1,8 +1,7 @@
 #' Initialize a time series of power forecasts. Assumes training data already captures
 #' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
 #'
-#' @param x A list of training data the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site')
-#' or a [ntrain x nsites] matrix for scale=='region' or 'total'
+#' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
 #' @param start_time A lubridate time stamp
 #' @param time_step Time step in hours
 #' @param scale One of 'site', 'region', 'total'
@@ -11,11 +10,12 @@
 #' @param ... optional arguments to the prob_forecast object
 ts_forecast <- function(x, start_time, time_step, scale, location, method, ...) {
   # Check inputs
-  if (!((is.vector(x[[1]]) & tolower(scale) %in% c("site", "s")) | (is.matrix(x[[1]]) & tolower(scale) %in% c("region", "total", "r", "t")))){
-      stop("Data and scale mis-match. x should be a list the length of the time-series. Each element should be a vector of training data (for scale=='site') or a [ntrain x nsites] matrix for scale=='region' or 'total")
+  if (!is.array(x)) stop("Bad input. x must be an array.")
+  if (!((length(dim(x))==2 & tolower(scale) %in% c("site", "s")) | (length(dim(x))==3 & tolower(scale) %in% c("region", "total", "r", "t")))){
+    stop("Data and scale mis-match. x must be a 2-dimensional array for 1-dimensional forecasts or a 3-dimensional array for n-dimensional forecasts.")
   }
 
-  sun_up <- unlist(lapply(x, check_sunup))
+  sun_up <- apply(x, MARGIN=1, FUN=check_sunup)
   forecasts <- calc_forecasts(x, sun_up, start_time=start_time, time_step=time_step, scale=scale, location=location,
                               method=method, ...)
 
@@ -50,10 +50,15 @@ check_sunup <- function(x){
 #' @param ... optional arguments to the prob_forecast, including marginal estimator arguments
 #' @return A list of forecasts. Forecast is NA for times when sun is down.
 calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, ...) {
-  forecast_class <- get_forecast_class(scale, method)
-  forecasts <- mapply(function(d, time, sun_up, ...){if (sun_up) {return(forecast_class(d[!is.na(d)], location=location, time=time, ...))} else {return(NA)}},
-                      x, start_time + (seq_along(x)-1)*lubridate::dhours(time_step), sun_up, MoreArgs=list(...=...), SIMPLIFY=FALSE)
-  return(forecasts)
+  class_type <- get_forecast_class(scale, method)
+  sub_func <- function(i, time, sun_up, x, location, ...){
+    if (sun_up) {
+      if (class_type$dim == '1') {
+        return(class_type$class(x[i,], location=location, time=time, ...))
+      } else {return(class_type$class(x[i,,], location=location, time=time, ...))}
+    } else {return(NA)}}
+  return(mapply(sub_func, seq_len(dim(x)[1]), start_time + (seq_len(dim(x)[1])-1)*lubridate::dhours(time_step), sun_up,
+                MoreArgs=list(x=x, location=location, ...=...), SIMPLIFY=FALSE))
 }
 
 #' Look-up function of the forecast class type
@@ -63,23 +68,26 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 #' @return A function to initialize a forecast of the desired type
 get_forecast_class <- function(scale, method){
   if (tolower(scale) %in% c("site", "s")){
-    return(switch(tolower(method),
+    cls <- switch(tolower(method),
                   "rank" = prob_1d_rank_forecast,
                   "r" = prob_1d_rank_forecast,
                   "kde" = prob_1d_kde_forecast,
                   "k" = prob_1d_kde_forecast,
-                  stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' '))))
+                  stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' ')))
+    d <- '1'
   } else if (tolower(scale) %in% c("region", "total", "r", "t")){
-    return(switch(tolower(method),
+    cls <- switch(tolower(method),
            "vine" = prob_nd_vine_forecast,
            "gaussian" = prob_nd_gaussian_forecast,
            "empirical" = prob_nd_empirical_forecast,
            "v" = prob_nd_vine_forecast,
            "g" = prob_nd_gaussian_forecast,
            "e" = prob_nd_empirical_forecast,
-           stop(paste('Forecast type', method, 'not recognized for multi-dimensional forecasts.', sep=' '))))
+           stop(paste('Forecast type', method, 'not recognized for multi-dimensional forecasts.', sep=' ')))
+    d <- 'n'
   } else stop(paste('Forecast scale', scale, 'not recognized.', sep=' '))
-}
+  return(list(class=cls, dim=d))
+  }
 
 #' Calculate number of steps in time series forecast
 length.ts_forecast <- function(x) {
