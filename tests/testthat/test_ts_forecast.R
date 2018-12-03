@@ -11,7 +11,7 @@ fake_class2 <- function(x,y) return(function(x,y,z,q, m, ...) "A forecast")
 mock_get <- function(x,y) return(fake_class)
 start_time <- ymd(20161130)
 time_step <- 0.25
-x_site <- list(matrix(c(0,1), ncol = 1))
+x_site <- list(c(0,1))
 x_multi <- list(matrix(c(0,1), ncol=2), matrix(c(2,3), ncol=2))
 sun_up <- c(TRUE, TRUE)
 
@@ -27,7 +27,9 @@ test_that("ts_forecast initialization throws errors", {
             expect_error(ts_forecast(x_multi, start_time, time_step, 'site', 'Odessa', 'vine')), "Data and scale mis-match*")
   with_mock(calc_forecasts = mock_calc, check_sunup = mock_sunup,
             expect_error(ts_forecast(x_site, start_time, time_step, 'region', 'Odessa', 'vine')), "Data and scale mis-match*")
-})
+  with_mock(calc_forecasts = mock_calc, check_sunup = mock_sunup,
+            expect_error(ts_forecast(list(matrix(c(0,1), ncol = 1)), start_time, time_step, 'site', 'Odessa', 'vine')), "Data and scale mis-match*")
+  })
 
 test_that("ts_forecast calculation inserts NA's when sun is down", {
   with_mock(get_forecast_class=fake_class2,

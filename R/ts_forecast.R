@@ -11,8 +11,8 @@
 #' @param ... optional arguments to the prob_forecast object
 ts_forecast <- function(x, start_time, time_step, scale, location, method, ...) {
   # Check inputs
-  if (!((dim(x[[1]])[2] == 1 & tolower(scale) %in% c("site", "s")) | (dim(x[[1]])[2] > 1 & tolower(scale) %in% c("region", "total", "r", "t")))){
-      stop("Data and scale mis-match. x should be a list the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site') or a [ntrain x nsites] matrix for scale=='region' or 'total")
+  if (!((is.vector(x[[1]]) & tolower(scale) %in% c("site", "s")) | (is.matrix(x[[1]]) & tolower(scale) %in% c("region", "total", "r", "t")))){
+      stop("Data and scale mis-match. x should be a list the length of the time-series. Each element should be a vector of training data (for scale=='site') or a [ntrain x nsites] matrix for scale=='region' or 'total")
   }
 
   sun_up <- unlist(lapply(x, check_sunup))
