@@ -4,7 +4,7 @@ library(forecasting)
 library(lubridate)
 library(scoringRules)
 
-mock_calc <- function(x, sun_up, start_time, time_step, scale, location, method, n, epsilon, ...) "Calculated"
+mock_calc <- function(x, sun_up, start_time, time_step, scale, location, method, ...) "Calculated"
 mock_sunup <- function(x) "Sunup"
 fake_class <- function(x,y,z,q, m, ...) sum(x)
 fake_class2 <- function(x,y) return(function(x,y,z,q, m, ...) "A forecast")
@@ -17,21 +17,21 @@ sun_up <- c(TRUE, TRUE)
 
 test_that("ts_forecast object initialization", {
   with_mock(calc_forecasts = mock_calc, check_sunup = mock_sunup,
-  OUT <- ts_forecast(x_site, start_time, time_step, 'site', 'Odessa', 'rank', 3000, 0.05))
+  OUT <- ts_forecast(x_site, start_time, time_step, 'site', 'Odessa', 'rank'))
   expect_identical(OUT$forecasts, 'Calculated')
   expect_identical(class(OUT), 'ts_forecast')
 })
 
 test_that("ts_forecast initialization throws errors", {
   with_mock(calc_forecasts = mock_calc, check_sunup = mock_sunup,
-            expect_error(ts_forecast(x_multi, start_time, time_step, 'site', 'Odessa', 'vine', 3000, 0.05)))
+            expect_error(ts_forecast(x_multi, start_time, time_step, 'site', 'Odessa', 'vine')), "Data and scale mis-match*")
   with_mock(calc_forecasts = mock_calc, check_sunup = mock_sunup,
-            expect_error(ts_forecast(x_site, start_time, time_step, 'region', 'Odessa', 'vine', 3000, 0.05)))
+            expect_error(ts_forecast(x_site, start_time, time_step, 'region', 'Odessa', 'vine')), "Data and scale mis-match*")
 })
 
 test_that("ts_forecast calculation inserts NA's when sun is down", {
   with_mock(get_forecast_class=fake_class2,
-            OUT <- calc_forecasts(x_multi, c(FALSE, TRUE), start_time, time_step, 'region', 'Odessa', 'vine', 3000, 0.05))
+            OUT <- calc_forecasts(x_multi, c(FALSE, TRUE), start_time, time_step, 'region', 'Odessa', 'vine'))
   expect_identical(OUT, list(NA, "A forecast"))
 })
 
@@ -46,8 +46,17 @@ test_that("ts_forecast class lookup is correct", {
 
 test_that("ts_forecast calculate list of forecasts", {
   with_mock(get_forecast_class=mock_get,
-  OUT <- calc_forecasts(x_multi, sun_up, start_time, time_step, 'T', "Odessa", 'vine', 3000, 0.05))
+  OUT <- calc_forecasts(x_multi, sun_up, start_time, time_step, 'T', "Odessa", 'vine'))
   expect_identical(OUT, list(1, 5))
+})
+
+test_that("ts_forecast calculate passes options through.", {
+  opt1 <- "thing"
+  opt2 <- 22
+  with_mock(get_forecast_class=function(...) return(function(x, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}),
+            out <- calc_forecasts(1:3, sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='rank', opt1=opt1, opt2=opt2))
+  expect_equal(out[[1]]$thing1, opt1)
+  expect_equal(out[[1]]$thing2, opt2)
 })
 
 # This is bad testing, but mainly to convince myself of the logic.

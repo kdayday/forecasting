@@ -8,15 +8,8 @@
 #' @param scale One of 'site', 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
-#' @param n An integer: Number of samples to take
 #' @param ... optional arguments to the prob_forecast object
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
-ts_forecast <- function(x, start_time, time_step,
-                        scale='region',
-                        location='unknown',
-                        method='vine',
-                        n=3000,
-                        epsilon=c(0.05, 0.95), ...) {
+ts_forecast <- function(x, start_time, time_step, scale, location, method, ...) {
   # Check inputs
   if (!((dim(x[[1]])[2] == 1 & tolower(scale) %in% c("site", "s")) | (dim(x[[1]])[2] > 1 & tolower(scale) %in% c("region", "total", "r", "t")))){
       stop("Data and scale mis-match. x should be a list the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site') or a [ntrain x nsites] matrix for scale=='region' or 'total")
@@ -24,7 +17,7 @@ ts_forecast <- function(x, start_time, time_step,
 
   sun_up <- unlist(lapply(x, check_sunup))
   forecasts <- calc_forecasts(x, sun_up, start_time=start_time, time_step=time_step, scale=scale, location=location,
-                              method=method, n=n, epsilon=epsilon, ...)
+                              method=method, ...)
 
   dat <- list(start_time = start_time,
               scale = scale,
@@ -54,21 +47,12 @@ check_sunup <- function(x){
 #' @param scale One of 'site', 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine'
-#' @param n An integer: Number of samples to take
-#' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @param ... optional arguments to the prob_forecast, including marginal estimator arguments
 #' @return A list of forecasts. Forecast is NA for times when sun is down.
-calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, n, epsilon, ...) {
+calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, ...) {
   forecast_class <- get_forecast_class(scale, method)
-  forecasts <- vector(mode="list", length(x))
-  for (i in seq_along(x)){
-    if (sun_up[i]) {
-      forecasts[[i]] <- forecast_class(x[[i]], location=location, time=start_time + (i-1)*lubridate::dhours(time_step),
-                                       n=n, epsilon=epsilon, ...)
-    } else {
-      forecasts[[i]] <- NA
-          }
-  }
+  forecasts <- mapply(function(d, time, sun_up, ...){if (sun_up) {return(forecast_class(d[!is.na(d)], location=location, time=time, ...))} else {return(NA)}},
+                      x, start_time + (seq_along(x)-1)*lubridate::dhours(time_step), sun_up, MoreArgs=list(...=...), SIMPLIFY=FALSE)
   return(forecasts)
 }
 
@@ -129,12 +113,7 @@ plot.ts_forecast <- function(x, ..., actuals=NA) {
 #' @return Numeric vector
 get_quantile_time_series <- function(x, alpha) {
   q <- paste(alpha, '%', sep='')
-  timeseries <- vector('numeric', length=length(x))
-  for (i in seq_along(x)) {
-    if (is.prob_forecast(x$forecasts[[i]])){
-      timeseries[i] <- x$forecasts[[i]]$quantiles[q]
-    }
-  }
+  timeseries <- sapply(x$forecasts, FUN=function(forecast, q) {if (is.prob_forecast(forecast)){return(unname(forecast$quantiles[q]))} else return(0)}, q=q)
   if (any(is.na(timeseries[x$sun_up]))) stop(paste(q,'quantile not available'))
   return(timeseries)
 }
@@ -142,17 +121,8 @@ get_quantile_time_series <- function(x, alpha) {
 #' Plot a time-series of the upper and lower tail CVAR's
 #' @param x A ts_forecast object
 plot_cvar_over_time <- function(x) {
-  y1 <- vector(mode='numeric', length=length(x))
-  y2 <- y1
-  for (i in seq_along(x$forecasts)) {
-    if (is.prob_forecast(x$forecasts[[i]])) {
-      y1[i] <- x$forecasts[[i]]$cvar$low
-      y2[i] <- x$forecasts[[i]]$cvar$high
-    } else {
-      y1[i] <- 0
-      y2[i] <- 0
-    }
-  }
+  y1 <- sapply(x$forecasts, FUN=function(fc) {if (is.prob_forecast(fc)) {return(fc$cvar$low)} else {return(0)}})
+  y2 <- sapply(x$forecasts, FUN=function(fc) {if (is.prob_forecast(fc)) {return(fc$cvar$high)} else {return(0)}})
   colors <- c("darkseagreen4", "darkorange3")
   graphics::plot((1:length(x))*x$time_step, y2, type = 'b', col=colors[1], xlab='Time', ylab='CVaR [W]')
   graphics::lines((1:length(x))*x$time_step, y1, type = 'b', col=colors[2])
@@ -167,12 +137,9 @@ plot_cvar_over_time <- function(x) {
 #' @param actuals A list of the realized values
 eval_avg_crps <-function(ts, actuals){
   if (length(actuals) != length(ts)) {stop('Time-series forecast and actual values must have the same length.')}
-  crps <- vector('numeric', length=length(ts))
-  for (i in seq_along(ts)) {
-    if (is.prob_forecast(ts$forecasts[[i]])){
-      crps[i] <- scoringRules::crps_sample(actuals[i], get_1d_samples(ts$forecasts[[i]]))
-    }
-  }
+  crps <- mapply(function(forecast, value){
+    if (is.prob_forecast(forecast)){return(scoringRules::crps_sample(value, get_1d_samples(forecast)))}
+    else {return(NA)} }, ts$forecasts, actuals)
   return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))
 }
 
