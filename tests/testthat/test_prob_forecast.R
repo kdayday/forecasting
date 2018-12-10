@@ -185,23 +185,26 @@ test_that('get_joint_density_grid calc is correct', {
 # 1d rank forecast tests
 
 
-test_that("1d rank forecast initialization is correct.", {
+test_that("1d rank forecast initialization correctly handles NA's and multiple value.", {
   with_mock(calc_quantiles=mock_pd,
-            OUT <- prob_1d_rank_forecast(c(2, 4, 3), location='Odessa', time=1))
+            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, NA, 4), location='Odessa', time=1))
   expect_true(is.prob_1d_rank_forecast((OUT)))
   expect_equal(length(OUT), 1)
-  expect_equal(OUT$rank_quantiles$x, c(2, 3, 4))
-  expect_equal(OUT$rank_quantiles$y, c(0, 0.5, 1))
+  expect_equal(OUT$rank_quantiles$x, c(2, 2, 3, 4, 4))
+  expect_equal(OUT$rank_quantiles$y, c(0, 0.25, 0.5, 0.75, 1))
 })
 
-test_that("1D rank forecast initialization throws error.", {
+test_that("1D rank forecast initialization throws errors.", {
+  # Format error
   expect_error(prob_1d_rank_forecast(matrix(c(2, 4, 3)), location='Odessa', time=1), "Input data*")
-})
+  # Not enough values error
+  expect_error(prob_1d_rank_forecast(c(1, NA, NA), location='Odessa', time=1), "*non-NA*")
+  })
 
 test_that('1d rank forecast quantile calculation is correct', {
-  fake_forecast <- structure(list(rank_quantiles=list(x=c(0, 5, 10), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
+  fake_forecast <- structure(list(rank_quantiles=list(x=c(1, 6, 11), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
   OUT <- calc_quantiles(fake_forecast, quantile_density=0.25)
-  expect_equal(unname(OUT), seq(0, 10, by=2.5))
+  expect_equal(unname(OUT), seq(1, 11, by=2.5))
   expect_equal(names(OUT), c("0%", "25%", "50%", "75%", "100%"))
 })
 

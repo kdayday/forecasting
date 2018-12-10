@@ -335,9 +335,13 @@ get_1d_samples.prob_nd_empirical_forecast <- function(x) {
 prob_1d_rank_forecast <- function(dat, location, time, ...) {
   if (!is.vector(dat)) stop("Input data must be a vector.")
 
+  # Quality control for NA's
+  dat <- dat[!is.na(dat)]
+  if (length(dat) < 2) stop("Input data must have at least 2 non-NA values. ")
+
   # Initialize probabilistic forecast
   dat <- list(location = location,
-              rank_quantiles = list(x=sort(dat), y=(rank(sort(dat))-1)/(length(dat)-1)),
+              rank_quantiles = list(x=sort(dat), y=(0:(length(dat)-1))/(length(dat)-1)),
               time = time,
               d = 1)
 
