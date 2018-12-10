@@ -110,8 +110,9 @@ plot.ts_forecast <- function(x, ..., actuals=NA) {
   graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Aggregate power [W]")
   fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
                rlab=NULL, start=x$time_step, frequency=1/x$time_step)
-  if (all(!is.na(actuals))) {
-    graphics::lines(seq(from=x$time_step, length.out=length(x), by=x$time_step), actuals, col='chocolate3', lwd=2)
+  if (any(!is.na(actuals))) {
+    actuals_time_step <- x$time_step*length(x)/length(actuals)
+    graphics::lines(seq(from=actuals_time_step, length.out=length(actuals), by=actuals_time_step), actuals, col='chocolate3', lwd=2)
   }
 }
 
