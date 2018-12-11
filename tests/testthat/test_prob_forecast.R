@@ -184,22 +184,23 @@ test_that('get_joint_density_grid calc is correct', {
 # -----------------------------------------------------------------------------------------------------------
 # 1d rank forecast tests
 
+test_that("Quality control function works correctly and throws errors", {
+  # Format error
+  expect_error(qc_input(matrix(c(2, 4, 3))), "Input data*")
+  # Not enough values error
+  expect_error(qc_input(c(1, NA, NA)), "*non-NA*")
+  expect_equal(qc_input(c(3, NA, 4.5, NA)), c(3, 4.5))
+})
+
 
 test_that("1d rank forecast initialization correctly handles NA's and multiple value.", {
-  with_mock(calc_quantiles=mock_pd,
-            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, NA, 4), location='Odessa', time=1))
+  with_mock(calc_quantiles=mock_pd, qc_input=function(x) return(x),
+            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, 4), location='Odessa', time=1))
   expect_true(is.prob_1d_rank_forecast((OUT)))
   expect_equal(length(OUT), 1)
   expect_equal(OUT$rank_quantiles$x, c(2, 2, 3, 4, 4))
   expect_equal(OUT$rank_quantiles$y, c(0, 0.25, 0.5, 0.75, 1))
 })
-
-test_that("1D rank forecast initialization throws errors.", {
-  # Format error
-  expect_error(prob_1d_rank_forecast(matrix(c(2, 4, 3)), location='Odessa', time=1), "Input data*")
-  # Not enough values error
-  expect_error(prob_1d_rank_forecast(c(1, NA, NA), location='Odessa', time=1), "*non-NA*")
-  })
 
 test_that('1d rank forecast quantile calculation is correct', {
   fake_forecast <- structure(list(rank_quantiles=list(x=c(1, 6, 11), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
@@ -215,15 +216,11 @@ test_that('1d rank forecast quantile calculation throws errors', {
 
 test_that("1D KDE forecast initialization is correct.", {
   with_mock(probempirical=function(dat, anoption= 'b', ...) return(paste(anoption, 'model', sep=' ')),
-            calc_quantiles=function(...) return(NA),
+            calc_quantiles=function(...) return(NA), qc_input=function(x) return(x),
             OUT <- prob_1d_kde_forecast(c(2, 4, 3), location='Odessa', time=1, cdf.method='empirical', anoption='a'))
   expect_true(is.prob_1d_kde_forecast((OUT)))
   expect_equal(length(OUT), 1)
   expect_equal(OUT$model, 'a model')
-})
-
-test_that("1D KDE forecast initialization throws error.", {
-  expect_error(prob_1d_kde_forecast(matrix(c(2, 4, 3)), location='Odessa', time=1, cdf.method='empirical', anoption='a'), "Input data*")
 })
 
 test_that('1d kde forecast quantile calculation is correct', {

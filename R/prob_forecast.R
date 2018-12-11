@@ -324,6 +324,18 @@ get_1d_samples.prob_nd_empirical_forecast <- function(x) {
 # Methods for univariate probabilistic forecast class
 #------------------------------------------------------------------------------
 
+#' Quality control 1-dimension input data
+#'
+#' @param dat A numeric vector of data
+#' @return data without NA's
+qc_input <- function(dat) {
+  if (!is.vector(dat)) stop("Input data must be a vector.")
+  # Quality control for NA's
+  dat <- dat[!is.na(dat)]
+  if (length(dat) < 2) stop("Input data must have at least 2 non-NA values. ")
+  return(dat)
+}
+
 #' Initialize a univariate probabilistic power forecast for a specific time point by ranking ensemble members.
 #' Its rank quantiles are the basic quantiles estimated from the ensemble members; the quantiles are the rank quantiles iterpolated
 #' to the quantiles of interest (i.e., 10%, 20%, etc...)
@@ -333,11 +345,7 @@ get_1d_samples.prob_nd_empirical_forecast <- function(x) {
 #' @param time A lubridate time stamp
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_1d_rank_forecast <- function(dat, location, time, ...) {
-  if (!is.vector(dat)) stop("Input data must be a vector.")
-
-  # Quality control for NA's
-  dat <- dat[!is.na(dat)]
-  if (length(dat) < 2) stop("Input data must have at least 2 non-NA values. ")
+  dat <- qc_input(dat)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
@@ -387,7 +395,7 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 #' @param ... Additional parameters passed on the KDE method
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_1d_kde_forecast <- function(dat, location, time, cdf.method='geenens', ...) {
-  if (!is.vector(dat)) stop("Input data must be a vector.")
+  dat <- qc_input(dat)
 
   func <- kde_lookup(cdf.method)
   # Get selected KDE
