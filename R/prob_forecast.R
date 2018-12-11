@@ -27,7 +27,7 @@ calc_is <- function(x, actual, alpha) {
 
 #' Plot probabilistic forecast's quantiles
 plot.prob_forecast <- function(x) {
-  plot(x$quantiles, seq(0, 1, length.out = length(x$quantiles)), xlab='Power [W]', ylab='Cumulative Density',
+  plot(x$quantiles, seq(0, 1, length.out = length(x$quantiles)), xlab='Power [MW]', ylab='Cumulative Density',
        main='Quantiles', sub = paste("Location: ", x$location, ", Time:", x$time))
 }
 
@@ -237,7 +237,7 @@ plot_pdf.prob_nd_vine_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95))
   # Assume data is power or irradiance and must be non-negative
   samples <- get_1d_samples(x)
   epdf <- stats::density(samples, from=0)
-  plot(epdf, xlab='Power [W]', ylab='Probability',
+  plot(epdf, xlab='Power [MW]', ylab='Probability',
        main='Estimated probability density', sub = paste("Location: ", x$location, ", Time:", x$time))
 
   if (cvar){# Color in tails above/below desired epsilon's
@@ -455,6 +455,6 @@ calc_cvar.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
 #'
 #' @param x prob_1d_kde_forecast object
 plot_pdf.prob_1d_kde_forecast <- function(x) {
-  plot(x$model$x, x$model$d, xlab='Power [W]', ylab='Probability density', sub = paste("Location: ", x$location, ", Time:", x$time),
+  plot(x$model$x, x$model$d, xlab='Power [MW]', ylab='Probability density', sub = paste("Location: ", x$location, ", Time:", x$time),
        type='l', lwd=2)
 }
