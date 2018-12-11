@@ -455,6 +455,6 @@ calc_cvar.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
 #'
 #' @param x prob_1d_kde_forecast object
 plot_pdf.prob_1d_kde_forecast <- function(x) {
-  plot(fc_kde$model$x, fc_kde$model$d, xlab='Power [W]', ylab='Probability density', sub = paste("Location: ", x$location, ", Time:", x$time),
+  plot(x$model$x, x$model$d, xlab='Power [W]', ylab='Probability density', sub = paste("Location: ", x$location, ", Time:", x$time),
        type='l', lwd=2)
 }
