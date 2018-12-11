@@ -162,13 +162,13 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
 #'
 #' @param x prob_nd_vine_forecast object
 #' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with cVaR calculation
-#' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
+#' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantile_density=0.1) {
-  if (quantile_density <= 0 | quantile_density >= 1) stop('Bad input. Quantile density must be in (0,1).')
+calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.05, 0.95, by=0.05)) {
+  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
 
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
-  quantiles <- stats::quantile(samples, probs=seq(0, 1 , quantile_density), type=1, names=TRUE)
+  quantiles <- stats::quantile(samples, probs=quantiles, type=1, names=TRUE)
   return(quantiles)
 }
 
@@ -365,14 +365,13 @@ is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
 #' Calculate forecast quantiles
 #'
 #' @param x prob_1d_rank_forecast object
-#' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
+#' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_rank_forecast <- function(x, quantile_density=0.1) {
-  if (quantile_density <= 0 | quantile_density >= 1) stop('Bad input. Quantile density must be in (0,1).')
-  yseq <- seq(0, 1, by=quantile_density)
-  xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=yseq)$y
+calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
+  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+  xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
 
-  names(xseq) <- sapply(yseq, FUN=function(y) return(paste(y*100, "%", sep='')))
+  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
   return(xseq)
 }
 
@@ -420,14 +419,13 @@ is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
 #' Calculate forecast quantiles from KDE
 #'
 #' @param x prob_1d_kde_forecast object
-#' @param quantile_density Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%
+#' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_kde_forecast <- function(x, quantile_density=0.1) {
-  if (quantile_density <= 0 | quantile_density >= 1) stop('Bad input. Quantile density must be in (0,1).')
-  yseq <- seq(0, 1, by=quantile_density)
-  xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=yseq)$y
+calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
+  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+  xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=quantiles)$y
 
-  names(xseq) <- sapply(yseq, FUN=function(y) return(paste(y*100, "%", sep='')))
+  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
   return(xseq)
 }
 

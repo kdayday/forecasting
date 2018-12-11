@@ -104,13 +104,13 @@ test_that("Vine copula quantile calculation adjusts for inputs", {
             OUT <- calc_quantiles(fake_x))
   expect_equal(OUT, 10)
   with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
-            OUT <- calc_quantiles(fake_x, samples=rep(1, times=4), quantile_density=0.2))
+            OUT <- calc_quantiles(fake_x, samples=rep(1, times=4), quantiles=seq(0.2, 0.8, by=0.2)))
   expect_equal(OUT, 4)
 })
 
 test_that("Vine copula quantile throws error", {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantile_density=1), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantile_density=-0.1), "Bad input*")
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
 })
 
 test_that("Interval score calculation is correct.", {
@@ -204,14 +204,14 @@ test_that("1d rank forecast initialization correctly handles NA's and multiple v
 
 test_that('1d rank forecast quantile calculation is correct', {
   fake_forecast <- structure(list(rank_quantiles=list(x=c(1, 6, 11), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
-  OUT <- calc_quantiles(fake_forecast, quantile_density=0.25)
-  expect_equal(unname(OUT), seq(1, 11, by=2.5))
-  expect_equal(names(OUT), c("0%", "25%", "50%", "75%", "100%"))
+  OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, by=0.25))
+  expect_equal(unname(OUT), seq(1+2.5, 11-2.5, by=2.5))
+  expect_equal(names(OUT), c("25%", "50%", "75%"))
 })
 
 test_that('1d rank forecast quantile calculation throws errors', {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantile_density=1), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantile_density=-0.1), "Bad input*")
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
 })
 
 test_that("1D KDE forecast initialization is correct.", {
@@ -225,9 +225,9 @@ test_that("1D KDE forecast initialization is correct.", {
 
 test_that('1d kde forecast quantile calculation is correct', {
   fake_forecast <- structure(list(model=list(x=c(0, 5, 10), u=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_kde_forecast"))
-  OUT <- calc_quantiles(fake_forecast, quantile_density=0.25)
-  expect_equal(unname(OUT), seq(0, 10, by=2.5))
-  expect_equal(names(OUT), c("0%", "25%", "50%", "75%", "100%"))
+  OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, length.out = 3))
+  expect_equal(unname(OUT), seq(2.5, 7.5, by=2.5))
+  expect_equal(names(OUT), c("25%", "50%", "75%"))
 })
 
 test_that("1d KDE CVAR estimate is correct", {
