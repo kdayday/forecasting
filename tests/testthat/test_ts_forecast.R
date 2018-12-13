@@ -82,6 +82,19 @@ test_that("Integrate telemetry calculation is correct", {
   expect_equal(aggregate_telemetry(tel=c(1, 0, 2, 3, 9, 9), len_ts=2), c(1, 7))
 })
 
+test_that("Calculation of number of time points without night-time and NaN's in telemetry is correct", {
+  fake_x <- structure(list(sun_up=c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)), class = c("ts_forecast"))
+  with_mock(aggregate_telemetry=function(...) return(c(3, 4, 5, NaN, 0, NaN, NaN, 0, 1, -1, NaN, NaN)),
+  result <- get_sundown_and_NaN_stats(fake_x, tel=NA))
+  expect_equal(result$"Sun-up forecasts", 6)
+  expect_equal(result$"Sun-down forecasts", 6)
+  expect_equal(result$"Telemetry missing when sun up", 2)
+  expect_equal(result$"Telemetry available when sun up", 4)
+  expect_equal(result$"Telemetry is 0 when sun forecasted down", 1)
+  expect_equal(result$"Telemetry is non-zero when sun forecasted down", 2)
+  expect_equal(result$"Telemetry is NaN when sun forecasted down", 3)
+})
+
 test_that("Integrate telemetry calculation handles NA's correctly", {
   expect_equal(aggregate_telemetry(tel=c(1:4, NaN), len_ts=5), c(1:4,NaN)) # NA's get passed through
   expect_equal(aggregate_telemetry(tel=c(1, 0, NaN, 3, 9, 9, NaN, NaN, NaN), len_ts=3), c(NaN, 7, NaN)) # Time periods with at least one NA get NAN

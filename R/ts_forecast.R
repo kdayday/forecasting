@@ -153,6 +153,30 @@ aggregate_telemetry <- function(tel, len_ts) {
   return(sapply(seq_len(len_ts), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)}))
   } else {return(tel)}
 }
+
+#' Get statistics on the prevalence of NaN's in telemetry and sun-up/sun-down discrepancies
+#'
+#' @param tel A vector of the telemetry values
+#' @param len_ts Number of timesteps in the time series forecast
+get_sundown_and_NaN_stats <- function(ts, tel) {
+  tel_e <- aggregate_telemetry(tel, length(ts))
+  fc_sundown <- length(ts$sun_up[ts$sun_up==FALSE])
+  fc_sunup <- length(ts$sun_up[ts$sun_up==TRUE])
+  tel_sunup_NaN <- length(tel_e[is.nan(tel_e) & ts$sun_up==TRUE])
+  tel_sunup <- length(tel_e[!is.nan(tel_e) & ts$sun_up==TRUE])
+  tel_sundown_0 <- length(tel_e[!is.nan(tel_e) & tel_e==0 & ts$sun_up==FALSE])
+  tel_sundown <- length(tel_e[!is.nan(tel_e) & tel_e!=0 & ts$sun_up==FALSE])
+  tel_sundown_NaN <- length(tel_e[is.nan(tel_e) & ts$sun_up==FALSE])
+  return(list("Sun-up forecasts"=fc_sunup,
+              "Sun-down forecasts"=fc_sundown,
+              "Telemetry missing when sun up"=tel_sunup_NaN,
+              "Telemetry available when sun up"=tel_sunup,
+              "Telemetry is 0 when sun forecasted down"=tel_sundown_0,
+              "Telemetry is non-zero when sun forecasted down"=tel_sundown,
+              "Telemetry is NaN when sun forecasted down"=tel_sundown_NaN
+         ))
+}
+
 #' Get the average estimated CRPS (continuous ranked probability score) for the forecast;
 #' the score at each time point is estimated from sampled data.
 #' CRPS characterizes calibration and sharpness together
