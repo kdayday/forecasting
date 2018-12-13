@@ -73,10 +73,18 @@ test_that("Check sun-up works correctly", {
   expect_identical(OUT, c(FALSE, TRUE, FALSE))
 })
 
-test_that("Average CRPS calculation throws error on input of wrong length.", {
-  act <- c(10, 15)
-  fake_ts <- structure(list(forecasts = c(1,2,3)), class = "ts_forecast")
-  expect_error(eval_avg_crps(fake_ts, act))
+test_that("Integrate telemetry throws error on inputs of wrong length.", {
+  expect_error(aggregate_telemetry(tel=c(10, 15), len_ts=3), '*multiples*')
+})
+
+test_that("Integrate telemetry calculation is correct", {
+  expect_equal(aggregate_telemetry(tel=1:4, len_ts=4), 1:4)
+  expect_equal(aggregate_telemetry(tel=c(1, 0, 2, 3, 9, 9), len_ts=2), c(1, 7))
+})
+
+test_that("Integrate telemetry calculation handles NA's correctly", {
+  expect_equal(aggregate_telemetry(tel=c(1:4, NaN), len_ts=5), c(1:4,NaN)) # NA's get passed through
+  expect_equal(aggregate_telemetry(tel=c(1, 0, NaN, 3, 9, 9, NaN, NaN, NaN), len_ts=3), c(NaN, 7, NaN)) # Time periods with at least one NA get NAN
 })
 
 x1 <- structure(list(quantiles=seq(0, 100, 10), n=2), class="prob_forecast")
@@ -95,14 +103,37 @@ test_that("Extraction of time-series at certain quantile throws error.", {
 
 test_that("Brier score is as expected", {
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10)),
-    expect_equal(eval_brier(ts, actuals=c(0, 40, 5), 80), 0.68))
+            aggregate_telemetry=function(...) return(c(0, 40, 5)),
+    expect_equal(eval_brier(ts, tel=NA, alpha=.8), 0.68))
 })
+
+test_that("Brier score calculation handles NaN's", {
+  fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
+            aggregate_telemetry=function(...) return(c(0, 40, 5, NA)),
+            expect_equal(eval_brier(fake_ts, tel=NA, alpha=.8), 0.68))
+  })
 
 test_that("MAE calculation is correct.", {
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25)),
-    expect_equal(eval_mae(ts, actuals=c(60, 60, 5)), 15)) # error = 10 and 20
+            aggregate_telemetry=function(...) return(c(60, 60, 5)),
+    expect_equal(eval_mae(ts, tel=NA), 15)) # error = 10 and 20
+})
+
+test_that("MAE calculation handles NaN's.", {
+  fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25, 30)),
+            aggregate_telemetry=function(...) return(c(60, 60, 5, NaN)),
+            expect_equal(eval_mae(fake_ts, tel=NA), 15)) # error = 10 and 20
 })
 
 test_that("Average interval score calculation is correct.", {
-  expect_equal(eval_avg_is(ts, actuals=c(50, 50, 25), alpha=0.2), 60) # 60=mean(40, 80)
+  with_mock(aggregate_telemetry=function(...) return(c(50, 50, 25)),
+            expect_equal(eval_avg_is(ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
+})
+
+test_that("Average interval score calculation handles NaN's.", {
+  fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  with_mock(aggregate_telemetry=function(...) return(c(50, 50, 25, NaN)),
+            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
 })

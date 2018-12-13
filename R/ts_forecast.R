@@ -97,8 +97,8 @@ length.ts_forecast <- function(x) {
 #' Plot fan plot of the time-series probabilistic forecast
 #'
 #' @param x A ts_forecast object
-#' @param actuals list of realized values (optional)
-plot.ts_forecast <- function(x, ..., actuals=NA) {
+#' @param tel vector of telemetry (optional)
+plot.ts_forecast <- function(x, ..., tel=NA) {
   # Hard-coding this for now -- will need to change if other percentiles are desired
   probs <- seq(from=0, to=1, length.out = length(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles))
   plotdata <- matrix(ncol=length(x), nrow=length(probs))
@@ -110,9 +110,9 @@ plot.ts_forecast <- function(x, ..., actuals=NA) {
   graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Aggregate power [W]")
   fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
                rlab=NULL, start=x$time_step, frequency=1/x$time_step)
-  if (any(!is.na(actuals))) {
-    actuals_time_step <- x$time_step*length(x)/length(actuals)
-    graphics::lines(seq(from=actuals_time_step, length.out=length(actuals), by=actuals_time_step), actuals, col='chocolate3', lwd=2)
+  if (any(!is.na(tel))) {
+    actuals_time_step <- x$time_step*length(x)/length(tel)
+    graphics::lines(seq(from=actuals_time_step, length.out=length(tel), by=actuals_time_step), tel, col='chocolate3', lwd=2)
   }
 }
 
@@ -138,17 +138,32 @@ plot_cvar_over_time <- function(x) {
   graphics::legend(x="topleft", legend=c("Upper tail", "Lower tail"), bty='n', col=colors, lty=1, lwd=2, y.intersp=2)
 }
 
+# --------------------------------------------------------------------------------------------
+# Forecast evaluation methods
+
+#' Preprocess and integrate telemetry values for metrics evaluations, for when telemetry is at finer time resolution than the forecast.
+#' The forecast and telemetry can be at different time resolutions, so long as telemetry is a multiple of the forecast.
+#'
+#' @param tel A vector of the telemetry values
+#' @param len_ts Number of timesteps in the time series forecast
+aggregate_telemetry <- function(tel, len_ts) {
+  if (length(tel) != len_ts & length(tel) %% len_ts > 0) stop("Telemetry length must be equal to or a multiple of forecast length.")
+  tel_2_fc <- length(tel)/len_ts
+  if (tel_2_fc > 1){
+  return(sapply(seq_len(len_ts), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)}))
+  } else {return(tel)}
+}
 #' Get the average estimated CRPS (continuous ranked probability score) for the forecast;
 #' the score at each time point is estimated from sampled data.
 #' CRPS characterizes calibration and sharpness together
 #'
 #' @param ts A ts_forecast object
-#' @param actuals A list of the realized values
-eval_avg_crps <-function(ts, actuals){
-  if (length(actuals) != length(ts)) {stop('Time-series forecast and actual values must have the same length.')}
+#' @param tel A vector of the telemetry values
+eval_avg_crps <-function(ts, tel){
+  tel_e <- aggregate_telemetry(tel, length(ts))
   crps <- mapply(function(forecast, value){
     if (is.prob_forecast(forecast)){return(scoringRules::crps_sample(value, get_1d_samples(forecast)))}
-    else {return(NA)} }, ts$forecasts, actuals)
+    else {return(NA)} }, ts$forecasts, tel_e)
   return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))
 }
 
@@ -157,24 +172,26 @@ eval_avg_crps <-function(ts, actuals){
 #' I THINK THIS NEEDS TO BE EXPLORED, BECAUSE I DON'T KNOW THE EFFECT OF THE CONSTANT PROBABILITY THRESHOLD.
 #'
 #' @param ts A ts_forecast object
-#' @param actuals A list of the realized values
-#' @param alpha Threshold probability of exceedance, numeric [0,100]
+#' @param tel A list of the telemetry values
+#' @param alpha Threshold probability of exceedance, numeric [0,1]
 #' @return the Brier score
-eval_brier <- function(ts, actuals, alpha) {
-  if (alpha < 0 | alpha > 100) stop(paste("alpha must be [0,1], given ", alpha, '.', sep=''))
-  thresholds <- get_quantile_time_series(ts, 100-alpha)
-  indicator <- as.integer(actuals[ts$sun_up] >= thresholds[ts$sun_up])
-  return(sum(((1-alpha/100)-indicator)^2))
+eval_brier <- function(ts, tel, alpha) {
+  tel_e <- aggregate_telemetry(tel, length(ts))
+  if (alpha < 0 | alpha > 1) stop(paste("alpha must be [0,1], given ", alpha, '.', sep=''))
+  thresholds <- get_quantile_time_series(ts, 100*(1-alpha))
+  indicator <- as.integer(tel_e[ts$sun_up] >= thresholds[ts$sun_up])
+  return(sum(((1-alpha)-indicator)^2, na.rm = TRUE))
 }
 
 #' Get mean absolute error between the forecast median and the actual value
 #'
 #' @param ts A ts_forecast object
-#' @param actuals A list of the realized values
+#' @param tel A list of the telemetry values
 #' @return the MAE value
-eval_mae <-function(ts, actuals) {
+eval_mae <-function(ts, tel) {
+  tel_e <- aggregate_telemetry(tel, length(ts))
   medians <- get_quantile_time_series(ts, 50)
-  return(mean(abs(medians[ts$sun_up]-actuals[ts$sun_up])))
+  return(mean(abs(medians[ts$sun_up]-tel_e[ts$sun_up]), na.rm = TRUE))
 }
 
 #' Get average interval score, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
@@ -182,19 +199,24 @@ eval_mae <-function(ts, actuals) {
 #' NEED TO EXPLORE THIS. UNSURE OF VALUE OF DOING SIMPLE AVERAGE OVER A HETEROSCEDASTIC PROCESS TO CHARACTERIZE SHARPNESS.
 #'
 #' @param ts A ts_forecast object
-#' @param actuals A list of the realized values
+#' @param tel A list of the telemetry values
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
 #' @return the average IS value
-eval_avg_is <-function(ts, actuals, alpha) {
-  return(mean(mapply(calc_is, ts$forecasts[ts$sun_up], actuals[ts$sun_up], alpha=alpha)))
+eval_avg_is <-function(ts, tel, alpha) {
+  tel_e <- aggregate_telemetry(tel, length(ts))
+  return(mean(mapply(calc_is, ts$forecasts[ts$sun_up], tel_e[ts$sun_up], alpha=alpha), na.rm=TRUE))
 }
 
 #' Plot diagonal line diagram of quantiles + observations
-plot_reliability <- function(ts, actuals) {
-  quants <- vector('numeric', length=length(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles))
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+plot_reliability <- function(ts, tel) {
+  tel_e <- aggregate_telemetry(tel, length(ts))
+
+    quants <- vector('numeric', length=length(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles))
   for (i in seq_along(ts)){
     if (is.prob_forecast(ts$forecasts[[i]])){
-      indx <- min(which(ts$forecasts[[i]]$quantiles > actuals[i]))
+      indx <- min(which(ts$forecasts[[i]]$quantiles > tel_e[i]))
       quants[indx] <- quants[indx] + 1
     }
   }
