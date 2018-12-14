@@ -100,9 +100,9 @@ test_that("Integrate telemetry calculation handles NA's correctly", {
   expect_equal(aggregate_telemetry(tel=c(1, 0, NaN, 3, 9, 9, NaN, NaN, NaN), len_ts=3), c(NaN, 7, NaN)) # Time periods with at least one NA get NAN
 })
 
-x1 <- structure(list(quantiles=seq(0, 100, 10), n=2), class="prob_forecast")
+x1 <- structure(list(quantiles=seq(10, 90, 10), n=2), class="prob_forecast")
 names(x1$quantiles) <-sapply(x1$quantiles, FUN=paste, '%', sep='')
-x2 <- structure(list(quantiles=seq(0, 50, 5), n=2), class="prob_forecast")
+x2 <- structure(list(quantiles=seq(5, 45, 5), n=2), class="prob_forecast")
 names(x2$quantiles) <-sapply(x1$quantiles, FUN=paste, '%', sep='')
 ts <- structure(list(forecasts=list(x1, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
 
@@ -149,4 +149,14 @@ test_that("Average interval score calculation handles NaN's.", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(aggregate_telemetry=function(...) return(c(50, 50, 25, NaN)),
             expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
+})
+
+test_that("Quantile reliability calculation is correct.", {
+  ts <- structure(list(forecasts=list(x1, x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE, TRUE)), class='ts_forecast')
+
+  # Hits: quantile 1, 4, 7, 10
+  with_mock(aggregate_telemetry=function(...) return(c(NaN, 0, 33, 33, 100)),
+    res <- get_quantile_reliability(ts, tel=NA))
+  expect_equal(res$quantiles, seq(0.1, 1, by=0.1))
+  expect_equal(res$hit_rate, c(0.25, 0, 0, 0.25, 0, 0, 0.25, 0, 0, 0.25))
 })

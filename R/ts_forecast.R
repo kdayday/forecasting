@@ -235,17 +235,32 @@ eval_avg_is <-function(ts, tel, alpha) {
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 plot_reliability <- function(ts, tel) {
-  tel_e <- aggregate_telemetry(tel, length(ts))
 
-    quants <- vector('numeric', length=length(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles))
-  for (i in seq_along(ts)){
-    if (is.prob_forecast(ts$forecasts[[i]])){
-      indx <- min(which(ts$forecasts[[i]]$quantiles > tel_e[i]))
-      quants[indx] <- quants[indx] + 1
-    }
+  x <- get_quantile_reliability(ts, tel)
+  quants <- x$quantiles
+  hit_rate <- x$hit_rate
+
+  graphics::plot(quants, quants, type="l", lty=2, xlab="Nominal",
+                 ylab="Observed", main="To do: add uncertainty bars")
+  graphics::lines(quants, cumsum(hit_rate), type='b', lty=1, pch=1)
+}
+
+get_quantile_reliability <- function(ts, tel) {
+  tel_e <- aggregate_telemetry(tel, length(ts))
+  # Get the list of quantiles that have been evaluated, and add top limit at 1
+  quants <- c(sapply(names(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles),
+         function(x) {as.numeric(gsub("%", "", x))/100}, USE.NAMES=FALSE), 1)
+
+  # Find time-points where telemetry and forecast data is available
+  indices <- which(!is.nan(tel_e) & ts$sun_up==TRUE)
+  q_idx_subfunc <- function(i) {
+    list_idx <- which(ts$forecasts[[i]]$quantiles > tel_e[i]) # List of quantile indices above telemetry value
+    if (length(list_idx) > 0) { idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
+    return(idx)
   }
-  quants <- quants/length(ts$forecasts[ts$sun_up])
-  graphics::plot(seq(0, 1, along.with=quants), seq(0, 1, along.with=quants), type="l", lty=2, xlab="Nominal",
-                 ylab="Observed", title="To do: add uncertainty bars")
-  graphics::lines(seq(0, 1, along.with=quants), cumsum(quants), type='b', lty=1, pch=1)
+  q_indices <- sapply(indices, q_idx_subfunc) # Get the indices of the corresponding quantile for each time points
+  counts <- sapply(seq_along(quants), function(i) return(sum(q_indices == i)), USE.NAMES = FALSE)
+
+  hit_rate <- counts/length(indices)
+  return(list(quantiles=quants, hit_rate=hit_rate))
 }
