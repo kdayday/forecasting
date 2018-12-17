@@ -74,17 +74,19 @@ test_that("Check sun-up works correctly", {
 })
 
 test_that("Integrate telemetry throws error on inputs of wrong length.", {
-  expect_error(aggregate_telemetry(tel=c(10, 15), len_ts=3), '*multiples*')
+  expect_error(equalize_telemetry_forecast_length(tel=c(10, 15), fc=c(3, 4, 5)), '*multiples*')
 })
 
 test_that("Integrate telemetry calculation is correct", {
-  expect_equal(aggregate_telemetry(tel=1:4, len_ts=4), 1:4)
-  expect_equal(aggregate_telemetry(tel=c(1, 0, 2, 3, 9, 9), len_ts=2), c(1, 7))
+  expect_equal(equalize_telemetry_forecast_length(tel=1:4, fc=5:8, agg=TRUE), list(tel=1:4, fc=5:8, tel_2_fc=1))
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 3, 9, 9), fc=1:2, agg=TRUE), list(tel=c(1, 7), fc=1:2, tel_2_fc=3))
+  expect_equal(equalize_telemetry_forecast_length(tel=1:4, fc=5:8, agg=FALSE), list(tel=1:4, fc=5:8, tel_2_fc=1))
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 3, 9, 9), fc=1:2, agg=FALSE), list(tel=c(1, 0, 2, 3, 9, 9), fc=c(1,1,1,2,2,2), tel_2_fc=3))
 })
 
 test_that("Calculation of number of time points without night-time and NaN's in telemetry is correct", {
   fake_x <- structure(list(sun_up=c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)), class = c("ts_forecast"))
-  with_mock(aggregate_telemetry=function(...) return(c(3, 4, 5, NaN, 0, NaN, NaN, 0, 1, -1, NaN, NaN)),
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(3, 4, 5, NaN, 0, NaN, NaN, 0, 1, -1, NaN, NaN))),
   result <- get_sundown_and_NaN_stats(fake_x, tel=NA))
   expect_equal(result$"Sun-up forecasts", 6)
   expect_equal(result$"Sun-down forecasts", 6)
@@ -96,8 +98,8 @@ test_that("Calculation of number of time points without night-time and NaN's in 
 })
 
 test_that("Integrate telemetry calculation handles NA's correctly", {
-  expect_equal(aggregate_telemetry(tel=c(1:4, NaN), len_ts=5), c(1:4,NaN)) # NA's get passed through
-  expect_equal(aggregate_telemetry(tel=c(1, 0, NaN, 3, 9, 9, NaN, NaN, NaN), len_ts=3), c(NaN, 7, NaN)) # Time periods with at least one NA get NAN
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1:4, NaN), fc=1:5), list(tel=c(1:4,NaN), fc=1:5, tel_2_fc=1)) # NA's get passed through
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, NaN, 3, 9, 9, NaN, NaN, NaN), fc=1:3), list(tel=c(NaN, 7, NaN), fc=1:3, tel_2_fc=3)) # Time periods with at least one NA get NAN
 })
 
 x1 <- structure(list(quantiles=seq(10, 90, 10), n=2), class="prob_forecast")
@@ -116,47 +118,78 @@ test_that("Extraction of time-series at certain quantile throws error.", {
 
 test_that("Brier score is as expected", {
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10)),
-            aggregate_telemetry=function(...) return(c(0, 40, 5)),
+            equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(0, 40, 5), fc=ts)),
     expect_equal(eval_brier(ts, tel=NA, alpha=.8), 0.68))
 })
 
 test_that("Brier score calculation handles NaN's", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
-            aggregate_telemetry=function(...) return(c(0, 40, 5, NA)),
+            equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(0, 40, 5, NA))),
             expect_equal(eval_brier(fake_ts, tel=NA, alpha=.8), 0.68))
   })
 
 test_that("MAE calculation is correct.", {
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25)),
-            aggregate_telemetry=function(...) return(c(60, 60, 5)),
+            equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(60, 60, 5))),
     expect_equal(eval_mae(ts, tel=NA), 15)) # error = 10 and 20
 })
 
 test_that("MAE calculation handles NaN's.", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25, 30)),
-            aggregate_telemetry=function(...) return(c(60, 60, 5, NaN)),
+            equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(60, 60, 5, NaN))),
             expect_equal(eval_mae(fake_ts, tel=NA), 15)) # error = 10 and 20
 })
 
 test_that("Average interval score calculation is correct.", {
-  with_mock(aggregate_telemetry=function(...) return(c(50, 50, 25)),
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(50, 50, 25), tel_2_fc=1)),
             expect_equal(eval_avg_is(ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
 })
 
 test_that("Average interval score calculation handles NaN's.", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
-  with_mock(aggregate_telemetry=function(...) return(c(50, 50, 25, NaN)),
-            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(50, 50, 25, NaN), tel_2_fc=1)),
+            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2), 60)) # 60=mean(80, 40)
+})
+
+
+test_that("Average interval score calculation handles telemetry aggregation (agg=TRUE).", {
+  fake_ts <- structure(list(forecasts=list(x1, x2), sun_up=c(TRUE, TRUE)), class='ts_forecast')
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(50, 25), fc=ts, tel_2_fc=2)),
+            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2, agg=TRUE), 60)) # 60=mean(80, 40)
+})
+
+test_that("Average interval score calculation handles telemetry longer than forecast (agg=FALSE).", {
+  fake_ts <- structure(list(forecasts=list(x1, x2), sun_up=c(TRUE, TRUE)), class='ts_forecast')
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(50, 50, 25, NaN), fc=rep(ts, each=2), tel_2_fc=2)),
+            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2, agg=FALSE), 200/3)) # 200/3=mean(80, 80, 40)
 })
 
 test_that("Quantile reliability calculation is correct.", {
   ts <- structure(list(forecasts=list(x1, x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE, TRUE)), class='ts_forecast')
 
   # Hits: quantile 1, 4, 7, 10
-  with_mock(aggregate_telemetry=function(...) return(c(NaN, 0, 33, 33, 100)),
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(NaN, 0, 33, 33, 100), fc=ts, tel_2_fc=1)),
     res <- get_quantile_reliability(ts, tel=NA))
   expect_equal(res$quantiles, seq(0.1, 1, by=0.1))
   expect_equal(res$hit_rate, c(0.25, 0, 0, 0.25, 0, 0, 0.25, 0, 0, 0.25))
 })
+
+test_that("Quantile reliability calculation handles aggregated telemetry.", {
+  ts <- structure(list(forecasts=list(x1, x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE, TRUE)), class='ts_forecast')
+
+  # Hits: quantile 1, 4, 7, 10
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(NaN, 0, 33, 33, 100), fc=ts, tel_2_fc=2)),
+            res <- get_quantile_reliability(ts, tel=NA, agg=TRUE))
+  expect_equal(res$hit_rate, c(0.25, 0, 0, 0.25, 0, 0, 0.25, 0, 0, 0.25))
+})
+
+test_that("Quantile reliability calculation handles telemetry longer than forecast (agg=FALSE).", {
+  ts <- structure(list(forecasts=list(x1, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
+  # Hits: quantile 2, 4, 3, 7
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(NaN, 0, 12, 33, 12, 33), fc=rep(ts, each=2), tel_2_fc=2)),
+            res <- get_quantile_reliability(ts, tel=NA, agg=FALSE))
+  expect_equal(res$hit_rate, c(0, 0.25, 0.25, 0.25, 0, 0, 0.25, 0, 0, 0))
+})
+
