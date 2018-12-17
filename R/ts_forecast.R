@@ -195,12 +195,12 @@ get_sundown_and_NaN_stats <- function(ts, tel, agg=TRUE) {
 #' @param ts A ts_forecast object
 #' @param tel A vector of the telemetry values
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
-eval_avg_crps <-function(ts, tel, agg=TRUE){
+CRPS_avg <-function(ts, tel, agg=TRUE){
   x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
   sun_up <- x$fc
 
   crps_list <- sapply(which(sun_up), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
-    return(crps(ts$forecasts[[j]], x$tel[i]))})
+    return(CRPS(ts$forecasts[[j]], x$tel[i]))})
   return(list(sd=stats::sd(crps_list, na.rm=TRUE), mean= mean(crps_list, na.rm=TRUE)))
 }
 
@@ -213,7 +213,7 @@ eval_avg_crps <-function(ts, tel, agg=TRUE){
 #' @param alpha Threshold probability of exceedance, numeric [0,1]
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
 #' @return the Brier score
-eval_brier <- function(ts, tel, alpha, agg=TRUE) {
+Brier <- function(ts, tel, alpha, agg=TRUE) {
   if (alpha < 0 | alpha > 1) stop(paste("alpha must be [0,1], given ", alpha, '.', sep=''))
   thresholds <- get_quantile_time_series(ts, 100*(1-alpha))
 
@@ -232,7 +232,8 @@ eval_brier <- function(ts, tel, alpha, agg=TRUE) {
 #' @param tel A list of the telemetry values
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
 #' @return the MAE value
-eval_mae <-function(ts, tel, agg=TRUE) {
+
+MAE <-function(ts, tel, agg=TRUE) {
   medians <- get_quantile_time_series(ts, 50)
   sun_up <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)$fc
   res <- equalize_telemetry_forecast_length(tel, medians, agg=agg)
@@ -250,11 +251,11 @@ eval_mae <-function(ts, tel, agg=TRUE) {
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
 #' @return the average IS value
-eval_avg_is <-function(ts, tel, alpha, agg=TRUE) {
+IS_avg <-function(ts, tel, alpha, agg=TRUE) {
   x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
   sun_up <- x$fc
   return(mean(sapply(which(sun_up), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
-    calc_is(ts$forecasts[[j]], x$tel[i], alpha=alpha)}), na.rm=TRUE))
+    IS(ts$forecasts[[j]], x$tel[i], alpha=alpha)}), na.rm=TRUE))
 }
 
 #' Plot diagonal line diagram of quantiles + observations

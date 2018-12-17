@@ -21,7 +21,7 @@ test_that("Marginal distribution optional arguments are passed through.", {
   # This actually goes through calc_transforms as well now, which I haven't bothered changing.
   with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
-            get_1d_samples= mock_samp, calc_cvar=mock_eval,
+            get_1d_samples= mock_samp, CVAR=mock_eval,
             out <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'TX', 'time',
                                   training_transform_type="geenens", results_transform_type='geenens', anoption=20))
   expect_equal(out$training_transforms[[1]]$anoption, 20)
@@ -33,7 +33,7 @@ test_that("Marginal distribution optional arguments are passed through and prob 
     prob_nd_vine_forecast(x, location=location, time=time, n=n, ...)}
   with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
-            get_1d_samples= mock_samp, calc_cvar=mock_eval,
+            get_1d_samples= mock_samp, CVAR=mock_eval,
             out <- fake_forecast_class_call(matrix(c(0,0,0,0), ncol=2), location='TX', time='sometime',
                                training_transform_type="geenens", results_transform_type='geenens', anoption=20))
   expect_equal(out$training_transforms[[1]]$anoption, 20)
@@ -41,7 +41,7 @@ test_that("Marginal distribution optional arguments are passed through and prob 
 })
 
 test_that("Vine copula forecast initialization throws errors", {
-  with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd, calc_cvar = mock_eval,
+  with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd, CVAR = mock_eval,
             vinecop=function(x, ...) NA,
             expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three')))
   expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  n=3000))
@@ -80,22 +80,22 @@ test_that("calc_transforms handles inputs correctly", {
 test_that("CVAR estimate is correct", {
   # Test sample over-ride
   fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
-  OUT <- calc_cvar(fake_x, samples=0:100, epsilon=c(0.05, 0.95))
+  OUT <- CVAR(fake_x, samples=0:100, epsilon=c(0.05, 0.95))
   expect_equal(OUT, list(cvar=list(low=2.5, high=97.5), var=list(low=5, high=95)))
   # Test default sampling
   with_mock(get_1d_samples=function(...) return(0:100),
-            OUT2 <-calc_cvar(fake_x, epsilon=c(0.05, 0.95)))
+            OUT2 <-CVAR(fake_x, epsilon=c(0.05, 0.95)))
   expect_equal(OUT2$var$high, 95)
 })
 
 test_that("CVAR calculations throws errors", {
   fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
-  expect_error(calc_cvar(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, 2)), "Bad input*")
-  expect_error(calc_cvar(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, -0.1)), "Bad input*")
+  expect_error(CVAR(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, 2)), "Bad input*")
+  expect_error(CVAR(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, -0.1)), "Bad input*")
 
   fake_x <- structure(list(), class = c("prob_forecast", "prob_1d_kde_forecast"))
-  expect_error(calc_cvar(fake_x,epsilon=c(0.5, 2)), "Bad input*")
-  expect_error(calc_cvar(fake_x, epsilon=c(0.5, -0.1)), "Bad input*")
+  expect_error(CVAR(fake_x,epsilon=c(0.5, 2)), "Bad input*")
+  expect_error(CVAR(fake_x, epsilon=c(0.5, -0.1)), "Bad input*")
 })
 
 test_that("Vine copula quantile calculation adjusts for inputs", {
@@ -118,9 +118,9 @@ test_that("Interval score calculation is correct.", {
   names(q) <-sapply(q, FUN=paste, '%', sep='')
   dat <- list(quantiles=q)
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
-  expect_equal(calc_is(fake_forecast, actual=15, alpha=0.2), 80)
-  expect_equal(calc_is(fake_forecast, actual=9, alpha=0.2), 80+2/0.2)
-  expect_equal(calc_is(fake_forecast, actual=95, alpha=0.2), 80+2/0.2*5)
+  expect_equal(IS(fake_forecast, actual=15, alpha=0.2), 80)
+  expect_equal(IS(fake_forecast, actual=9, alpha=0.2), 80+2/0.2)
+  expect_equal(IS(fake_forecast, actual=95, alpha=0.2), 80+2/0.2*5)
 })
 
 test_that("Interval score calculation throws error for bad input", {
@@ -128,8 +128,8 @@ test_that("Interval score calculation throws error for bad input", {
   names(q) <-sapply(q, FUN=paste, '%', sep='')
   dat <- list(quantiles=q)
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
-  expect_error(calc_is(fake_forecast, actual=95, alpha=10), "Alpha.*")
-  expect_error(calc_is(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
+  expect_error(IS(fake_forecast, actual=95, alpha=10), "Alpha.*")
+  expect_error(IS(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
 })
 
 test_that("CRPS estimation is correct", {
@@ -137,7 +137,7 @@ test_that("CRPS estimation is correct", {
   # 0.04 + 0.5*0.12 = 0.1; 0.16 + 0.5*0.2 + 0.04 * 0.5*0.12= 0.26 + 0.1=0.36
   # 0.1 + 0.36 = 0.46
   with_mock(calc_quantiles=function(...) {return(1:4)},
-            out <- crps(x=NA, tel=2, quantiles=seq(0.20, 0.8, length.out = 4)))
+            out <- CRPS(x=NA, tel=2, quantiles=seq(0.20, 0.8, length.out = 4)))
   expect_equal(out, 0.46)
 })
 
@@ -241,7 +241,7 @@ test_that('1d kde forecast quantile calculation is correct', {
 
 test_that("1d KDE CVAR estimate is correct", {
   fake_x <- structure(list(model=list(x=seq(5, 105, by=10), u=seq(0, 1, by=0.1), d=rep(0.01, times=11))), class = c("prob_forecast", "prob_1d_kde_forecast"))
-  OUT <- calc_cvar(fake_x, epsilon=c(0.2, 0.8))
+  OUT <- CVAR(fake_x, epsilon=c(0.2, 0.8))
 
   # Low side: CVAR = (1/0.2)*trapz from (5,0.05) to (25, 0.25) = (1/0.2)*3 = 15
   expect_equal(OUT, list(cvar=list(low=15, high=95), var=list(low=25, high=85)))

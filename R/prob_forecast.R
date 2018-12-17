@@ -15,7 +15,7 @@ length.prob_forecast <- function(x){
 #' @param x A ts_forecast object
 #' @param actual The realized value
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
-calc_is <- function(x, actual, alpha) {
+IS <- function(x, actual, alpha) {
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
   l <- unname(x$quantiles[paste(alpha/2*100, '%', sep='')])
   u <- unname(x$quantiles[paste((1-alpha/2)*100, '%', sep='')])
@@ -28,7 +28,7 @@ calc_is <- function(x, actual, alpha) {
 #' @param x A prob_forecast object
 #' @param tel Value or vector of telemetry values
 #' @param quantiles (optional) A sequence of (0,1) values to estimate the cumulative distribution for the numerical evaluation of CRPS
-crps <- function(x, tel, quantiles=seq(0.01, 0.99, by=0.001)) {
+CRPS <- function(x, tel, quantiles=seq(0.01, 0.99, by=0.001)) {
   if (any(quantiles <= 0 | quantiles >=1)) stop("Quantiles must be in (0,1).")
   y <- calc_quantiles(x, quantiles=quantiles)
   # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation
@@ -64,8 +64,8 @@ calc_quantiles <- function(x, ...) {
 
 #' Register generic VaR/CVaR function
 #' @param x A prob_forecast object
-calc_cvar <- function(x, ...) {
-  UseMethod("calc_cvar",x)
+CVAR <- function(x, ...) {
+  UseMethod("CVAR",x)
 }
 
 
@@ -188,7 +188,7 @@ calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.
 #' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with quantiles calculation
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return list of var, cvar
-calc_cvar.prob_nd_vine_forecast <- function(x, samples=NA, epsilon=c(0.05, 0.95)) {
+CVAR.prob_nd_vine_forecast <- function(x, samples=NA, epsilon=c(0.05, 0.95)) {
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
   if (any(epsilon <= 0) | any(epsilon >= 1)) stop("Bad input. Epsilon's must be in (0,1).")
 
@@ -251,7 +251,7 @@ plot_pdf.prob_nd_vine_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95))
        main='Estimated probability density', sub = paste("Location: ", x$location, ", Time:", x$time))
 
   if (cvar){# Color in tails above/below desired epsilon's
-    cvar_info <- calc_cvar(x, samples=samples, epsilon=epsilon)
+    cvar_info <- CVAR(x, samples=samples, epsilon=epsilon)
     i1 <- min(which(epdf$x >= cvar_info$var$low))
     i2 <- max(which(epdf$x <= cvar_info$var$high))
     graphics::lines(rep(cvar_info$var$low,times=2), c(0, epdf$y[i1]), col='black')
@@ -444,7 +444,7 @@ calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.05, 0.95, by=
 #' @param x prob_1d_kde_forecast object
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return list of var, cvar
-calc_cvar.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
+CVAR.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
   if (any(epsilon <= 0) | any(epsilon >= 1)) stop("Bad input. Epsilon's must be in (0,1).")
 
   var_low <- stats::approx(x=x$model$u, y=x$model$x, xout=epsilon[1])$y

@@ -118,59 +118,59 @@ test_that("Extraction of time-series at certain quantile throws error.", {
 test_that("Avg CRPS score handles telemetry longer than forecast", {
   tel <- c(25, 30, 35)
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=tel, tel_2_fc=2)),
-            crps=function(x, y) return(y),
-                        expect_equal(eval_avg_crps(ts, tel=tel, agg=FALSE), list(sd=stats::sd(c(30, 35)), mean=32.5)),
-            expect_equal(eval_avg_crps(ts, tel=tel, agg=TRUE), list(sd=stats::sd(c(30, 35)), mean=32.5)))
+            CRPS=function(x, y) return(y),
+            expect_equal(CRPS_avg(ts, tel=tel, agg=FALSE), list(sd=stats::sd(c(30, 35)), mean=32.5)),
+            expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(sd=stats::sd(c(30, 35)), mean=32.5)))
 })
 
 test_that("Brier score is as expected", {
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(0, 40, 5), fc=ts)),
-    expect_equal(eval_brier(ts, tel=NA, alpha=.8), 0.68))
+    expect_equal(Brier(ts, tel=NA, alpha=.8), 0.68))
 })
 
 test_that("Brier score calculation handles NaN's", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(0, 40, 5, NA))),
-            expect_equal(eval_brier(fake_ts, tel=NA, alpha=.8), 0.68))
+            expect_equal(Brier(fake_ts, tel=NA, alpha=.8), 0.68))
   })
 
 test_that("MAE calculation is correct.", {
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(60, 60, 5))),
-    expect_equal(eval_mae(ts, tel=NA), 15)) # error = 10 and 20
+    expect_equal(MAE(ts, tel=NA), 15)) # error = 10 and 20
 })
 
 test_that("MAE calculation handles NaN's.", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25, 30)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(60, 60, 5, NaN))),
-            expect_equal(eval_mae(fake_ts, tel=NA), 15)) # error = 10 and 20
+            expect_equal(MAE(fake_ts, tel=NA), 15)) # error = 10 and 20
 })
 
 test_that("Average interval score calculation is correct.", {
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(50, 50, 25), tel_2_fc=1)),
-            expect_equal(eval_avg_is(ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
+            expect_equal(IS_avg(ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
 })
 
 test_that("Average interval score calculation handles NaN's.", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(50, 50, 25, NaN), tel_2_fc=1)),
-            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2), 60)) # 60=mean(80, 40)
+            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2), 60)) # 60=mean(80, 40)
 })
 
 
 test_that("Average interval score calculation handles telemetry aggregation (agg=TRUE).", {
   fake_ts <- structure(list(forecasts=list(x1, x2), sun_up=c(TRUE, TRUE)), class='ts_forecast')
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(50, 25), fc=ts, tel_2_fc=2)),
-            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2, agg=TRUE), 60)) # 60=mean(80, 40)
+            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2, agg=TRUE), 60)) # 60=mean(80, 40)
 })
 
 test_that("Average interval score calculation handles telemetry longer than forecast (agg=FALSE).", {
   fake_ts <- structure(list(forecasts=list(x1, x2), sun_up=c(TRUE, TRUE)), class='ts_forecast')
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(50, 50, 25, NaN), fc=rep(ts, each=2), tel_2_fc=2)),
-            expect_equal(eval_avg_is(fake_ts, tel=NA, alpha=0.2, agg=FALSE), 200/3)) # 200/3=mean(80, 80, 40)
+            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2, agg=FALSE), 200/3)) # 200/3=mean(80, 80, 40)
 })
 
 test_that("Quantile reliability calculation is correct.", {
