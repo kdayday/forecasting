@@ -189,17 +189,19 @@ get_sundown_and_NaN_stats <- function(ts, tel, agg=TRUE) {
 }
 
 #' Get the average estimated CRPS (continuous ranked probability score) for the forecast;
-#' the score at each time point is estimated from sampled data.
+#' the score at each time point is estimated through numerical integration.
 #' CRPS characterizes calibration and sharpness together
 #'
 #' @param ts A ts_forecast object
 #' @param tel A vector of the telemetry values
-eval_avg_crps <-function(ts, tel){
-  tel_e <- aggregate_telemetry(tel, length(ts))
-  crps <- mapply(function(forecast, value){
-    if (is.prob_forecast(forecast)){return(scoringRules::crps_sample(value, get_1d_samples(forecast)))}
-    else {return(NA)} }, ts$forecasts, tel_e)
-  return(list(sd=stats::sd(crps[ts$sun_up]), mean= mean(crps[ts$sun_up])))
+#' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
+eval_avg_crps <-function(ts, tel, agg=TRUE){
+  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
+  sun_up <- x$fc
+
+  crps_list <- sapply(which(sun_up), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
+    return(crps(ts$forecasts[[j]], x$tel[i]))})
+  return(list(sd=stats::sd(crps_list, na.rm=TRUE), mean= mean(crps_list, na.rm=TRUE)))
 }
 
 #' Get Brier score at a certain probability of exceedance

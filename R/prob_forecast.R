@@ -23,7 +23,17 @@ calc_is <- function(x, actual, alpha) {
   is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
 }
 
-
+#' Estimate CRPS
+#'
+#' @param x A prob_forecast object
+#' @param tel Value or vector of telemetry values
+#' @param quantiles (optional) A sequence of (0,1) values to estimate the cumulative distribution for the numerical evaluation of CRPS
+crps <- function(x, tel, quantiles=seq(0.01, 0.99, by=0.001)) {
+  if (any(quantiles <= 0 | quantiles >=1)) stop("Quantiles must be in (0,1).")
+  y <- calc_quantiles(x, quantiles=quantiles)
+  # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation
+  crps <- pracma::trapz(y[y <= tel], (quantiles[y <= tel])^2) + pracma::trapz(y[y >= tel], (quantiles[y >= tel]-1)^2)
+}
 
 #' Plot probabilistic forecast's quantiles
 plot.prob_forecast <- function(x) {

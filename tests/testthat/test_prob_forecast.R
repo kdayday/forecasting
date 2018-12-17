@@ -132,6 +132,15 @@ test_that("Interval score calculation throws error for bad input", {
   expect_error(calc_is(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
 })
 
+test_that("CRPS estimation is correct", {
+  # Squared: 0.04, 0.16, | 0.36, 0.16
+  # 0.04 + 0.5*0.12 = 0.1; 0.16 + 0.5*0.2 + 0.04 * 0.5*0.12= 0.26 + 0.1=0.36
+  # 0.1 + 0.36 = 0.46
+  with_mock(calc_quantiles=function(...) {return(1:4)},
+            out <- crps(x=NA, tel=2, quantiles=seq(0.20, 0.8, length.out = 4)))
+  expect_equal(out, 0.46)
+})
+
 fake_sampling <- function(x,y){
   return(matrix(c(0.5, 0.1, 0.5, 0.2), ncol=2))
 }

@@ -2,7 +2,6 @@ context("Test forecasting context")
 
 library(forecasting)
 library(lubridate)
-library(scoringRules)
 
 mock_calc <- function(x, sun_up, start_time, time_step, scale, location, method, ...) "Calculated"
 fake_class <- function(x, location, time, ...) sum(x)
@@ -114,6 +113,14 @@ test_that("Time series of values at certain quantile is extracted correctly.", {
 
 test_that("Extraction of time-series at certain quantile throws error.", {
   expect_error(get_quantile_time_series(ts, 2))
+})
+
+test_that("Avg CRPS score handles telemetry longer than forecast", {
+  tel <- c(25, 30, 35)
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=tel, tel_2_fc=2)),
+            crps=function(x, y) return(y),
+                        expect_equal(eval_avg_crps(ts, tel=tel, agg=FALSE), list(sd=stats::sd(c(30, 35)), mean=32.5)),
+            expect_equal(eval_avg_crps(ts, tel=tel, agg=TRUE), list(sd=stats::sd(c(30, 35)), mean=32.5)))
 })
 
 test_that("Brier score is as expected", {
