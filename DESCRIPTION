@@ -23,7 +23,6 @@ Imports:
     purrr,
     repr,
     rvinecopulib,
-    scoringRules,
     stats
 Suggests:
     colorspace,
