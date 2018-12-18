@@ -126,14 +126,14 @@ test_that("Avg CRPS score handles telemetry longer than forecast", {
 test_that("Brier score is as expected", {
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(0, 40, 5), fc=ts)),
-    expect_equal(Brier(ts, tel=NA, alpha=.8), 0.68))
+    expect_equal(Brier(ts, tel=NA, alpha=.8), 0.34)) # mean( (-0.8)^2, (0.2)^2) = (0.64 +0.04)/2 = 0.34
 })
 
 test_that("Brier score calculation handles NaN's", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(0, 40, 5, NA))),
-            expect_equal(Brier(fake_ts, tel=NA, alpha=.8), 0.68))
+            expect_equal(Brier(fake_ts, tel=NA, alpha=.8), 0.34))
   })
 
 test_that("MAE calculation is correct.", {

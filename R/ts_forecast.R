@@ -223,7 +223,7 @@ Brier <- function(ts, tel, alpha, agg=TRUE) {
   tel <- res$tel
 
   indicator <- as.integer(tel[sun_up] >= thresholds[sun_up])
-  return(sum(((1-alpha)-indicator)^2, na.rm = TRUE))
+  return(mean(((1-alpha)-indicator)^2, na.rm = TRUE))
 }
 
 #' Get mean absolute error between the forecast median and the actual value
