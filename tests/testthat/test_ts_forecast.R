@@ -119,8 +119,8 @@ test_that("Avg CRPS score handles telemetry longer than forecast", {
   tel <- c(25, 30, 35)
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=tel, tel_2_fc=2)),
             CRPS=function(x, y) return(y),
-            expect_equal(CRPS_avg(ts, tel=tel, agg=FALSE), list(sd=stats::sd(c(30, 35)), mean=32.5)),
-            expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(sd=stats::sd(c(30, 35)), mean=32.5)))
+            expect_equal(CRPS_avg(ts, tel=tel, agg=FALSE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)))),
+            expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)))))
 })
 
 test_that("Brier score is as expected", {
@@ -151,26 +151,26 @@ test_that("MAE calculation handles NaN's.", {
 
 test_that("Average interval score calculation is correct.", {
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(50, 50, 25), tel_2_fc=1)),
-            expect_equal(IS_avg(ts, tel=NA, alpha=0.2), 60)) # 60=mean(40, 80)
+            expect_equal(IS_avg(ts, tel=NA, alpha=0.2), list(mean=60, min=40, max=80, sd=stats::sd(c(40, 80))))) # 60=mean(40, 80)
 })
 
 test_that("Average interval score calculation handles NaN's.", {
   fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(50, 50, 25, NaN), tel_2_fc=1)),
-            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2), 60)) # 60=mean(80, 40)
+            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2), list(mean=60, min=40, max=80, sd=stats::sd(c(40, 80))))) # 60=mean(80, 40)
 })
 
 
 test_that("Average interval score calculation handles telemetry aggregation (agg=TRUE).", {
   fake_ts <- structure(list(forecasts=list(x1, x2), sun_up=c(TRUE, TRUE)), class='ts_forecast')
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(50, 25), fc=ts, tel_2_fc=2)),
-            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2, agg=TRUE), 60)) # 60=mean(80, 40)
+            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2, agg=TRUE), list(mean=60, min=40, max=80, sd=stats::sd(c(40, 80))))) # 60=mean(80, 40)
 })
 
 test_that("Average interval score calculation handles telemetry longer than forecast (agg=FALSE).", {
   fake_ts <- structure(list(forecasts=list(x1, x2), sun_up=c(TRUE, TRUE)), class='ts_forecast')
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(50, 50, 25, NaN), fc=rep(ts, each=2), tel_2_fc=2)),
-            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2, agg=FALSE), 200/3)) # 200/3=mean(80, 80, 40)
+            expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2, agg=FALSE), list(mean=200/3, min=40, max=80, sd=stats::sd(c(40, 80, 80))))) # 200/3=mean(80, 80, 40)
 })
 
 test_that("Quantile reliability calculation is correct.", {

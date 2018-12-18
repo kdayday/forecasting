@@ -199,9 +199,9 @@ CRPS_avg <-function(ts, tel, agg=TRUE){
   x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
   sun_up <- x$fc
 
-  crps_list <- sapply(which(sun_up), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
+  crps_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
     return(CRPS(ts$forecasts[[j]], x$tel[i]))})
-  return(list(sd=stats::sd(crps_list, na.rm=TRUE), mean= mean(crps_list, na.rm=TRUE)))
+  return(list(mean=mean(crps_list), min=min(crps_list), max=max(crps_list), sd=stats::sd(crps_list)))
 }
 
 #' Get Brier score at a certain probability of exceedance
@@ -222,7 +222,7 @@ Brier <- function(ts, tel, alpha, agg=TRUE) {
   sun_up <- res$fc
   tel <- res$tel
 
-  indicator <- as.integer(tel[sun_up] >= thresholds[sun_up])
+  indicator <- as.integer(tel[sun_up & !is.na(tel)] >= thresholds[sun_up & !is.na(tel)])
   return(mean(((1-alpha)-indicator)^2, na.rm = TRUE))
 }
 
@@ -239,7 +239,7 @@ MAE <-function(ts, tel, agg=TRUE) {
   res <- equalize_telemetry_forecast_length(tel, medians, agg=agg)
   medians <- res$fc
   tel <- res$tel
-  return(mean(abs(medians[sun_up]-tel[sun_up]), na.rm = TRUE))
+  return(mean(abs(medians[sun_up & !is.na(tel)]-tel[sun_up & !is.na(tel)]), na.rm = TRUE))
 }
 
 #' Get average interval score, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
@@ -254,8 +254,9 @@ MAE <-function(ts, tel, agg=TRUE) {
 IS_avg <-function(ts, tel, alpha, agg=TRUE) {
   x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
   sun_up <- x$fc
-  return(mean(sapply(which(sun_up), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
-    IS(ts$forecasts[[j]], x$tel[i], alpha=alpha)}), na.rm=TRUE))
+  is_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
+    IS(ts$forecasts[[j]], x$tel[i], alpha=alpha)})
+  return(list(mean=mean(is_list), min=min(is_list), max=max(is_list), sd=stats::sd(is_list)))
 }
 
 #' Plot diagonal line diagram of quantiles + observations
