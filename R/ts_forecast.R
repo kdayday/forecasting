@@ -184,7 +184,8 @@ get_sundown_and_NaN_stats <- function(ts, tel, agg=TRUE) {
               "Telemetry available when sun up"=tel_sunup,
               "Telemetry is 0 when sun forecasted down"=tel_sundown_0,
               "Telemetry is non-zero when sun forecasted down"=tel_sundown,
-              "Telemetry is NaN when sun forecasted down"=tel_sundown_NaN
+              "Telemetry is NaN when sun forecasted down"=tel_sundown_NaN,
+              "Sunup missing telemetry rate"=tel_sunup_NaN/(tel_sunup+tel_sunup_NaN)
          ))
 }
 
