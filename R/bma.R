@@ -132,17 +132,17 @@ get_z_num_by_member <- function(OBS, FCST, PoC, db, w){
 }
 
 # Get z for single instance
-# density is (1-PoC)*1[obs==1] + PoC*Beta(obs,a,b)*1[obs < 1]
+# density is (PoC)*1[obs==1] + (1-PoC)*Beta(obs,a,b)*1[obs < 1]
 get_z <- function(OBS, PoC, db, w) {
-  ifelse(OBS==1, w*(1-PoC), w*PoC*db)
+  ifelse(OBS==1, w*PoC, w*(1-PoC)*db)
 }
 
 # Get PoC for single instance
+# PoC is estimated from logit(PoC)=a0 + a1*f + a2*1[obs==1]
+# This seems inverted from the PoP defintion from Will Kleiber's code, which reads to me like it should be 1-PoP
 get_poc <- function(FCST, A0, A1, A2) {
   if (is.na(FCST)) {return(NA)}
-  else if (FCST==1) {
-    return(exp(A0+A1*FCST+A2)/(1+exp(A0+A1*FCST+A2)))} # PoP1
-  else {return(exp(A0+A1*FCST)/(1+exp(A0+A1*FCST)))} # PoP2
+  else return(exp(A0+A1*FCST+A2*(FCST==1))/(1+exp(A0+A1*FCST+A2*(FCST==1))))
 }
 
 # Get beta density for single instance
