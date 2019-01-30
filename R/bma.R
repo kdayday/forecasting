@@ -41,100 +41,90 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, C0=0.5, C1=0.5, eps=1e-005, maxite
 #  start.w initial values for the weights (optional)
 
 {
-  # number of ensemble members
-  K <- dim(FCST)[3]
-  ntime <- dim(FCST)[1]
-  nsite <- dim(FCST)[2]
+  # set intial weights
+  w <- get_initial_weights(start.w, avail=apply(FCST, MARGIN = 3, FUN = function(x) {!all(is.na(x))}))
 
-  # set intial weights, either as equal weights or given starting values, ignoring forecast members which are unavailable
-  avail <- apply(FCST, MARGIN = 3, FUN = function(x) {!all(is.na(x))}) # Which members are available
+  # initialize values to get into loop
+  error <- 1
+  count <- 0
+
+  # Precalculate probability of clipping and beta density
+  PoC <- array(mapply(get_poc, FCST, A0, A1, A2), dim(FCST))
+
+  # main EM algorithm
+  while((max(abs(error)) > eps) && (count < maxiter))
+  {
+    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, C1, w)
+    C0 <- new_params$C0
+    C1 <- new_params$C1
+    w <- new_params$w
+    error <- new_params$error
+
+    count <- count + 1
+  }
+
+  # Compute log-likelihood (corrected by Adrian on 10/21/03)
+  lik <- get_log_lik(c(C0, C1), w)
+  return(list(loglik=lik, w=w, C0=C0, C1=C1, count=count))
+}
+
+
+# either as equal weights or given starting values, ignoring forecast members which are unavailable
+get_initial_weights <- function(start.w, avail) {
   if(is.null(start.w)){
     w <- sapply(avail, function(x) ifelse(x, 1/sum(avail), 0))
   }
   else{
     w <- sapply(seq_along(start.w), function(k) ifelse(avail[k], start.w[k]/sum(start.w[avail]), 0))
   }
-
-  error <- rep(1,times=(K))
-  count <- 0
-
-  # Precalculate probability of clipping and beta density
-  PoC <- sapply(1:ntime, function(t) {sapply(1:nsite, function(s) {sapply(1:K, get_poc(FCST[t,s,k], A0[t,s,k], A1[t,s,k], A2[t,s,k]))}, simplify="matrix")}, simplify="array")
-
-
-  # main EM algorithm
-  while((max(abs(error)) > eps) && (count < maxiter))
-  {
-    # Re-calculate beta density estimates based on current estimate for C0 and C1
-    db <- sapply(1:ntime, function(t) {sapply(1:nsite, function(s) {sapply(1:K, get_db(OBS[t,s,k], FCST[t,s,k], B0[t,s,k], B1[t,s,k], C0, C1))}, simplify="matrix")}, simplify="array")
-
-    ## E step
-    # sumz is weighted sum of density functions for each member
-    # PoC is a vector of probabilities of clipping, length of the training data
-
-    # z is the E step of algorithm, estimated for each site and time and forecast
-    # z is an array with the first entry being day, second entry site, third entry forecast
-    z_num <- sapply(1:nsite, function(s) {
-      sapply(1:K, function(k) {get_z_num_by_member(OBS[,s], FCST[,s,k], PoC[,s,k], db[,s,k], w[k])},
-             simplify="matrix")},simplify='array')
-
-    # TODO Check dimensions -- aperm??
-    # TODO TO DECIDE: SHOULD sites BE A SEPARATE MARGIN (allowing local A's and B's and global C's) OR NOT? Local A'S AND B'S CAN ALSO BE REPLICATED DOWN THE TRAINING DATA VECTOR TO ACCOMPLISH THE SAME THING
-    sumz <- apply(z_num, MARGIN=2, FUN=sum, na.rm=T)
-    z <- sapply(1:nsite, function(s) {sapply(1:K, function(k) {z_num[s,k,]/sumz[k]}, simplify="matrix")}, simplify="array" )
-
-    ## M step
-    # new weights and variance deflation
-    w.new <- sapply(1:K, function(k) {ifelse(any(!is.na(z[,,k])), mean(z[,,k], na.rm=TRUE), 0)})
-
-    # change from previous iteration to this one
-    error <- sapply(1:K, function(k) {return(w.new[k] - w[k])})
-
-    w <- w.new
-
-    # Using the new w estimate, re-optimize C0 and C1
-    get_log_lik <- function(params) {
-      # THESE ARE REDUNDANT WITH ABOVE
-      db <- sapply(1:ntime, function(t) {sapply(1:nsite, function(s) {sapply(1:K, get_db(OBS[t,s,k], FCST[t,s,k], B0[t,s,k], B1[t,s,k], params[1], params[2]))}, simplify="matrix")}, simplify="array")
-      z_num <- sapply(1:nsite, function(s) {
-        sapply(1:K, function(k) {get_z_num_by_member(OBS[,s], FCST[,s,k], PoC[,s,k], db[,s,k], w[k])},
-               simplify="matrix")},simplify='array')
-      sumz <- apply(z_num, MARGIN=2, FUN=sum, na.rm=T)
-      return(sum(log(sumz), na.rm=T))
-    }
-    optim_list <- optim(c(C0, C1), get_log_lik, control = list(fnscale=-1))
-    if (optim_list$convergence != 0) stop(optim_list$message)
-
-    error <- append(error, optim_list$par - c(C0, C1)) # Complete list of changes to all w and c parameters
-    C0 <- optim_list$par[1]
-    C1 <- optim_list$par[2]
-
-    count <- count + 1
-  }
-
-  # Compute log-likelihood (corrected by Adrian on 10/21/03)
-  lik=sum(log(sumz), na.rm=T)
-  return(list(loglik=lik, w=w, count=count))
+  return(w)
 }
 
+em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, C1, w) {
+  ## E step
+  z <- e_step(w, C0, C1, OBS, FCST, B0, B1, PoC)$z
 
+  ## M step
+  # new weights and variance deflation
+  # n members = dim(FCST)[3]
+  w.new <- sapply(1:dim(FCST)[3], function(k) {ifelse(any(!is.na(z[,,k])), mean(z[,,k], na.rm=TRUE), 0)})
 
-# Get time-series of z numerator for each member
-# Returns a time-series vector of z for a given member at a given site
-get_z_num_by_member <- function(OBS, FCST, PoC, db, w){
-  z <- rep(NA, length(FCST))
-  notna <- !is.na(OBS) & !is.na(FCST)
-  # Check whether this ensemble member is available
-  if (any(notna)){
-    z[notna] <- mapply(FUN=get_z, OBS=OBS[notna], PoC=PoC[notna], db=db[notna], w=w)
-  }
-  return(z)
+  # Using the new w estimate, re-optimize C0 and C1
+  optim_list <- optim(c(C0, C1), get_log_lik, w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, control = list(fnscale=-1))
+  if (optim_list$convergence != 0) stop(optim_list$message)
+
+  # Complete list of changes to all w and c parameters
+  error <- c(mapply("-", w.new, w), optim_list$par - c(C0, C1))
+
+  return(list(C0=optim_list$par[1], C1=optim_list$par[2], error=error, w=w.new))
+}
+
+## E step subfunction
+e_step <- function(w, C0, C1, OBS, FCST, B0, B1, PoC) {
+  # Re-calculate beta density estimates based on current estimate for C0 and C1
+  db <- array(mapply(get_beta_density, OBS, FCST, B0, B1, MoreArgs = list(C0=C0, C1=C1)), dim(FCST)) # Using linear indexing, OBS gets recycled across members
+
+  # z is an array with the first entry being day, second entry site, third entry forecast
+  # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
+  z_num <- array(mapply(get_z, OBS, PoC, db, rep(w, each=dim(FCST)[1]*dim(FCST)[2])), dim(FCST)) # Linear indexing, OBS is recycled across members, w explicitly expanded
+
+  # sumz is weighted sum of density functions for each member. Rows are single training days, columns are sites
+  sumz <- apply(z_num, MARGIN=c(1,2), FUN=sum, na.rm=T)
+  z <- array(mapply("/", z_num, sumz), dim(z_num)) # sumz is recycled across members
+  return(list(sumz=sumz, z=z))
+}
+
+# Define log likelihood subfunction for maximization step
+get_log_lik <- function(params, w, OBS, FCST, B0, B1, PoC) {
+  sumz <- e_step(w, params[1], params[2], OBS, FCST, B0, B1, PoC)$sumz
+  return(sum(log(sumz), na.rm=T))
 }
 
 # Get z for single instance
 # density is (PoC)*1[obs==1] + (1-PoC)*Beta(obs,a,b)*1[obs < 1]
 get_z <- function(OBS, PoC, db, w) {
-  ifelse(OBS==1, w*PoC, w*(1-PoC)*db)
+  if (is.na(OBS)) {return(NA)}
+  else return(ifelse(OBS==1, w*PoC, w*(1-PoC)*db))
 }
 
 # Get PoC for single instance
@@ -146,6 +136,7 @@ get_poc <- function(FCST, A0, A1, A2) {
 }
 
 # Get beta density for single instance
+# Currently assuming basic linear relationship with distribution mean and variance.
 get_beta_density <- function(OBS, FCST, B0, B1, C0, C1) {
   if (is.na(FCST) | is.na(OBS)) {return(NA)}
   else if (OBS==1) {return(NA)}
