@@ -1,25 +1,85 @@
 
-# Fit BMA coefficient for a beta distribution with discrete component at 1
-#' @param train.tel Vector of training telemetry data on [0,1]
-#' @param train.ens Matrix of training ensemble member data [time x member] on [0,1]
+
+# Fit BMA coefficients for beta distributions with discrete component at 1 for each ensemble member
+# Data should be pre-processed and normalized to [0,1] so that clipped values are exactly 1
+#' @param tel Vector of training telemetry data on [0,1]
+#' @param ens Matrix of training ensemble member data [time x member] on [0,1]
+#' @param lr_formula Formula in terms of x,y for logistic regression model, defaults to "y ~ x". Requires a negative x intercept to model PoC < 0.5.
+#' @param A_transform A function for transforming forecast data before logistic regression to get a's (optional)
+#' @param lm_formula Formula in terms of x,y for linear regression model, defaults to "y ~ x + 0"
+#' @param B_transform A function for transforming forecast data before linear regression to get b's (optional)
+#' @param C_transform A function for transforming forecast data in EM algorithm to get C's (optional)
 #' @return A formula for a discrete-continuous mixture model with beta distribution
-beta1_model <- function(tel, ens) {
+beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, C_transform=NA, tol=1e-6) {
+  if (any(tel < 0, na.rm=T) | any(tel-1>tol, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
+  if (any(ens < 0, na.rm=T) | any(ens-1>tol, na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
+  if (length(tel) != dim(ens)[1]) stop("Must have same number of telemetry and forecast time-points.")
 
   # 1. Logistic regression for a's
-  # Define what the the observations should be here
-  discrete_model <- summary(glm(obs ~ fc,family=binomial(link='logit'),data=data.frame(fc= , obs = )))
+  # Returns a list of model summaries, one per member
+  mem_discrete_models <-lapply(seq_len(dim(ens)[2]), function(i) get_lr(ens[,i], tel=tel, form=lr_formula, A_transform = A_transform, tol=tol))
+  A0 <- sapply(mem_discrete_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
+  A1 <- sapply(mem_discrete_models, function(m) return(m$coefficients["x", "Estimate"]))
 
-  # 2. linear regression for b's
-  # Define what the the observations should be here
-  mean_model <- summary(lm(obs ~ fc, data=data.frame(fc= , obs= )))
+  # 2. linear regression for b's.
+  mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel, form=lm_formula, B_transform = B_transform, tol=tol))
+  B0 <- sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
+  B1 <- sapply(mem_mean_models, function(m) return(m$coefficients["x", "Estimate"]))
+
+  # browser()
+  fit_statistics <- data.frame("A0 p-value"=sapply(mem_discrete_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Pr(>|z|)"], NA))),
+                               "A1 p-value"=sapply(mem_discrete_models, function(m) return(m$coefficients["x", "Pr(>|z|)"])),
+                               "A AIC"=sapply(mem_discrete_models, function(m) return(m$aic)),
+                               "B0 p-value"=sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Pr(>|t|)"], NA))),
+                               "B1 p-value"=sapply(mem_mean_models, function(m) return(m$coefficients["x", "Pr(>|t|)"])),
+                               "B r-squared"=sapply(mem_mean_models, function(m) return(m$r.squared)))
+
   # 3. ME algorithm for w's and c's
+  # In future, the above could be expanded to have unique site values. For now, matrices are expanded to arrays assuming a "single" site (i.e., global values).
+  ntime <- dim(ens)[1]
+  nens <- dim(ens)[2]
+  array_dims <- c(ntime, 1, nens)
+  tmp <- em(FCST=array(ens, dim=array_dims), OBS=array(tel, dim=c(ntime, 1)), A0=array(rep(A0, each=ntime), dim=array_dims),
+            A1=array(rep(A1, each=ntime), dim=array_dims), A2=0, B0=array(rep(B0, each=ntime), dim=array_dims),
+            B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, C_transform=C_transform)
 
-  # 4. back out p, y, and define final discrete-continuous model
- }
+  return(list(A0=A0, A1=A1, B0=B0, B1=B1, C0=tmp$C0, C1=tmp$C1, w=tmp$w, fit_statistics=fit_statistics, log_lik=tmp$log_lik))
+}
 
+
+# Do logistic regression to get a single ensemble member's 'a' coefficients
+# Telemetry within given tolerance of 1 are assumed to be clipped
+# glm and lm omit NA values by default
+# KEEP AN EYE ON SEPARATION PROBLEMS, AND JUST GET RID OF DISCRETE COMPONENT BASED ON ALL(CLIPPED==0, NA.RM=T) IF NEED BE.
+#' @param fc Vector of training forecast data on [0,1]
+#' @param tel Vector of telemetry data on [0,1]
+#' @param form Formula in terms of x,y for logistic regression model
+#' @param A_transform A function for pre-transforming the forecast data (optional), e.g. function(X) return(log(x)+1)
+#' @param tol Tolerance for determining if clipping is occuring
+#' @return Summary of the glm model
+get_lr <- function(fc, tel, form, A_transform, tol){
+  clipped <- as.integer(abs(tel-1) < tol)
+  if (typeof(A_transform)=="closure") fc <- sapply(fc, FUN = A_transform)
+  return(summary(glm(form, family=binomial(link='logit'), data=data.frame(x=fc, y=clipped))))
+}
+
+# Get the linear model for a single ensemble member's 'b' coefficients
+# Telemetry within given tolerance of 1 are assumed to be clipped
+# glm and lm omit NA values by default
+#' @param fc Vector of training forecast data on [0,1]
+#' @param tel Vector of telemetry data on [0,1]
+#' @param form Formula in terms of x,y for logistic regression model
+#' @param B_transform A function for pre-transforming the forecast data (optional), e.g. function(X) return(log(x)+1)
+#' @param tol Tolerance for determining if clipping is occuring
+#' @return Summary of the lm model
+get_lm <- function(fc, tel, form, B_transform, tol){
+  unclipped <- abs(tel-1) > tol
+  if (typeof(B_transform)=="closure") fc <- sapply(fc, FUN = B_transform)
+  return(summary(lm(form, data=data.frame(x=fc[unclipped], y=tel[unclipped]))))
+}
 
 # Expectation-maximization function, modified from code courtesy of Will Kleiber
-em <- function(FCST, OBS, A0, A1, A2, B0, B1, C0=0.5, C1=0.5, eps=1e-005, maxiter=1000, start.w=NULL)
+em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, C_transform, C0=0.5, C1=0.5, eps=1e-005, maxiter=1000, start.w=NULL)
 
     # MODEL for one forecast : y_s is solar power, logit P(y_s = 1 | f) = a0 + a1 f
     #                          solar power level, conditional on it being less than rated power (i.e., 1) is beta distributed
@@ -34,8 +94,8 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, C0=0.5, C1=0.5, eps=1e-005, maxite
 #              (number of ensemble members) of estimates of XN (usually posterior mean for A0,1,2 and
 #              least squares from regression for B0,1)
 #               Can set A2's to 0's to ignore the indicator function aspect
-#  CN          for N=0,1 starting estimates of CN, which are assumed constant across sites and members (equal variances among ensemble member)
 
+#  CN for N=0,1 starting estimates of CN, which are assumed constant across sites and members (equal variances among ensemble member)
 #  eps     stopping criterion
 #  maxiter maximum number of EM iterations allowed
 #  start.w initial values for the weights (optional)
@@ -49,12 +109,11 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, C0=0.5, C1=0.5, eps=1e-005, maxite
   count <- 0
 
   # Precalculate probability of clipping and beta density
-  PoC <- array(mapply(get_poc, FCST, A0, A1, A2), dim(FCST))
-
+  PoC <- array(mapply(get_poc, FCST, A0, A1, A2, MoreArgs=list(A_transform=A_transform)), dim(FCST))
   # main EM algorithm
   while((max(abs(error)) > eps) && (count < maxiter))
   {
-    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, C1, w)
+    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, C1, w, B_transform, C_transform)
     C0 <- new_params$C0
     C1 <- new_params$C1
     w <- new_params$w
@@ -63,11 +122,12 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, C0=0.5, C1=0.5, eps=1e-005, maxite
     count <- count + 1
   }
 
-  # Compute log-likelihood (corrected by Adrian on 10/21/03)
-  lik <- get_log_lik(c(C0, C1), w)
+  lik <- get_log_lik(c(C0, C1), w, OBS, FCST, B0, B1, PoC, B_transform, C_transform)
   return(list(loglik=lik, w=w, C0=C0, C1=C1, count=count))
 }
 
+# ----------------------------------------------------------------------------------------
+# EM helper functions
 
 # either as equal weights or given starting values, ignoring forecast members which are unavailable
 get_initial_weights <- function(start.w, avail) {
@@ -80,9 +140,9 @@ get_initial_weights <- function(start.w, avail) {
   return(w)
 }
 
-em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, C1, w) {
+em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, C1, w, B_transform, C_transform) {
   ## E step
-  z <- e_step(w, C0, C1, OBS, FCST, B0, B1, PoC)$z
+  z <- e_step(w, C0, C1, OBS, FCST, B0, B1, PoC, B_transform, C_transform)$z
 
   ## M step
   # new weights and variance deflation
@@ -90,7 +150,7 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, C1, w) {
   w.new <- sapply(1:dim(FCST)[3], function(k) {ifelse(any(!is.na(z[,,k])), mean(z[,,k], na.rm=TRUE), 0)})
 
   # Using the new w estimate, re-optimize C0 and C1
-  optim_list <- optim(c(C0, C1), get_log_lik, w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, control = list(fnscale=-1))
+  optim_list <- optim(c(C0, C1), get_log_lik, w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform, C_transform=C_transform, control = list(fnscale=-1))
   if (optim_list$convergence != 0) stop(optim_list$message)
 
   # Complete list of changes to all w and c parameters
@@ -100,9 +160,9 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, C1, w) {
 }
 
 ## E step subfunction
-e_step <- function(w, C0, C1, OBS, FCST, B0, B1, PoC) {
+e_step <- function(w, C0, C1, OBS, FCST, B0, B1, PoC, B_transform, C_transform) {
   # Re-calculate beta density estimates based on current estimate for C0 and C1
-  db <- array(mapply(get_beta_density, OBS, FCST, B0, B1, MoreArgs = list(C0=C0, C1=C1)), dim(FCST)) # Using linear indexing, OBS gets recycled across members
+  db <- array(mapply(get_beta_density, OBS, FCST, B0, B1, MoreArgs = list(C0=C0, C1=C1, B_transform=B_transform, C_transform=C_transform)), dim(FCST)) # Using linear indexing, OBS gets recycled across members
 
   # z is an array with the first entry being day, second entry site, third entry forecast
   # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
@@ -115,8 +175,8 @@ e_step <- function(w, C0, C1, OBS, FCST, B0, B1, PoC) {
 }
 
 # Define log likelihood subfunction for maximization step
-get_log_lik <- function(params, w, OBS, FCST, B0, B1, PoC) {
-  sumz <- e_step(w, params[1], params[2], OBS, FCST, B0, B1, PoC)$sumz
+get_log_lik <- function(params, w, OBS, FCST, B0, B1, PoC, B_transform, C_transform) {
+  sumz <- e_step(w, params[1], params[2], OBS, FCST, B0, B1, PoC, B_transform, C_transform)$sumz
   return(sum(log(sumz), na.rm=T))
 }
 
@@ -127,32 +187,51 @@ get_z <- function(OBS, PoC, db, w) {
   else return(ifelse(OBS==1, w*PoC, w*(1-PoC)*db))
 }
 
-# Get PoC for single instance
+# Get PoC (probability of clipping) for single instance
 # PoC is estimated from logit(PoC)=a0 + a1*f + a2*1[obs==1]
 # This seems inverted from the PoP defintion from Will Kleiber's code, which reads to me like it should be 1-PoP
-get_poc <- function(FCST, A0, A1, A2) {
+#' @param OBS single observation
+#' @param FCST single forecast
+#' @param A0 intercept of logistic regression of PoC
+#' @param A1 slope of logistic regression of PoC
+#' @param A2 coefficient of clipped forecast indicator [FCST==1] in logistic regression of PoC
+get_poc <- function(FCST, A0, A1, A2, A_transform=NA) {
   if (is.na(FCST)) {return(NA)}
-  else return(exp(A0+A1*FCST+A2*(FCST==1))/(1+exp(A0+A1*FCST+A2*(FCST==1))))
+  else return(1/(1+exp(-(A0+A1*ifelse(typeof(A_transform)=='closure', A_transform(FCST), FCST)+A2*(FCST==1)))))
 }
 
 # Get beta density for single instance
 # Currently assuming basic linear relationship with distribution mean and variance.
-get_beta_density <- function(OBS, FCST, B0, B1, C0, C1) {
+#' @param OBS single observation
+#' @param FCST single forecast
+#' @param B0 intercept of linear model of mean
+#' @param B1 slope of linear model of mean
+#' @param C0 intercept of linear model of variance
+#' @param C1 slope of linear model of variance
+#' @param B_tranform Function of forecast transformation for B coefficients (optional), e.g. function(x) return(log(x)+1)
+#' @param C_tranform Function of forecast transformation for C coefficients (optional), e.g. function(x) return(log(x)+1)
+get_beta_density <- function(OBS, FCST, B0, B1, C0, C1, B_transform=NA, C_transform=NA) {
   if (is.na(FCST) | is.na(OBS)) {return(NA)}
   else if (OBS==1) {return(NA)}
   else {
     # Estimate mu (mean)
-    mu <- B0 + B1*FCST
+
+    mu <- B0 + B1*ifelse(typeof(B_transform)=='closure', B_transform(FCST), FCST)
     # Estimate sigma (std deviation)
-    sigma <- C0 + C1*FCST
-    # Back-calculate gamma (I'm not sure this works out to be positive, given my current algebra) *****
+    sigma <- C0 + C1*ifelse(typeof(C_transform)=='closure', C_transform(FCST), FCST)
     gamma <- mu*(1-mu)/sigma^2 - 1
     if (gamma <=0) stop(paste("Non-positive gamma in beta density estimation with mu", mu, "and sigma", sigma, sep=" "))
 
     # Back-calculate alpha and beta from gamma and rho=mu
-    alpha <- mu*gamma
-    beta <- gamma *(1-mu)
+    # alpha <- mu*gamma
+    # beta <- gamma *(1-mu)
 
-    return(dbeta(OBS,shape1=alpha,shape2=beta))
+    # return(dbeta(OBS,shape1=alpha,shape2=beta))
+    return(dbeta_gamma_rho(OBS, g=gamma, rho=mu))
   }
 }
+
+dbeta_gamma_rho <- function(x, g, rho) {
+  gamma(g)/(gamma(g*rho)*gamma(g*(1-rho)))*x^(g*rho-1)*(1-x)^((1-rho)*g-1)
+}
+
