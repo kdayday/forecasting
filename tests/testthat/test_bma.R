@@ -36,6 +36,16 @@ test_that("e_step array handling is correct.", {
   expect_equal(OUT$sumz, matrix(c(42, 48, 54, 60), ncol=2))
 })
 
+test_that("e_step sumz handles NaN's.", {
+  OBS <-array(c(NA, 1, 1, NA, NA, 2), dim=c(3, 1, 2))
+  with_mock(get_rho= function(...) return(NA), get_gamma = function(...) return(NA),
+            dbeta_gamma_rho = function(...) return(NA),
+            get_z= function(x, ...) return(x),
+            OUT <- e_step(w=NA, C0=NA, OBS=OBS, FCST=OBS, B0=NA, B1=NA, PoC=NA, B_transform=NA, tol=NA))
+  expect_equal(OUT$z, array(c(NA, 1, 1/3, NA, NA, 2/3), dim=c(3, 1, 2)))
+  expect_equal(OUT$sumz, matrix(c(NA, 1, 3), ncol=1))
+})
+
 test_that("em_subfunction is correct.", {
   with_mock(e_step=function(...) {return(list(z=(array(c(0.1, 0.2, 0.3, NA, seq(0.2, 0.8, by = 0.2), rep(NA, 4)), dim=c(2, 2, 3)))))},
             optim=function(...) {return(list(convergence=0, par=2))},

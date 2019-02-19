@@ -173,8 +173,8 @@ e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol) {
   # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
   z_num <-  array(mapply(get_z, OBS, PoC, db, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(tol=tol)), dim(FCST)) # Linear indexing, OBS is recycled across members, w explicitly expanded
 
-  # sumz is weighted sum of density functions for each member. Rows are single training days, columns are sites
-  sumz <- apply(z_num, MARGIN=c(1,2), FUN=sum, na.rm=T)
+  # sumz is weighted sum of density functions across the members. Rows are single training days, columns are sites
+  sumz <- apply(z_num, MARGIN=c(1,2), FUN=function(z) ifelse(all(is.na(z)), NA, sum(z, na.rm=T))) # If all members are missing, return NA; else sum the others.
   z <- array(mapply("/", z_num, sumz), dim(z_num)) # sumz is recycled across members
   return(list(sumz=sumz, z=z))
 }
