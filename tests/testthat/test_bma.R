@@ -8,38 +8,14 @@ test_that("Probability of clipping calculation is correct.", {
   expect_equal(get_poc(FCST=1, A0=0.1, A1=1.2, A2=1), 1/(1+exp(-2.3))) # 0.1+1.2*1+1
 })
 
-test_that("get_z is correct.", {
-  expect_equal(get_z(OBS=1, PoC=0.4, db=0.01, w=0.5), 0.2) # 0.5 * 0.4 = 0.2
-  expect_equal(get_z(OBS=0.8, PoC=0.4, db=0.01, w=0.5), 0.003) # 0.5 * 0.6 * 0.01 =0.003
+test_that("get_z is correct, including clipping tolerance", {
+  expect_equal(get_z(OBS=1-1e-7, PoC=0.4, db=0.01, w=0.5, tol=1e-6), 0.2) # 0.5 * 0.4 = 0.2
+  expect_equal(get_z(OBS=1-1e-5, PoC=0.4, db=0.01, w=0.5, tol=1e-6), 0.003) # 0.5 * 0.6 * 0.01 =0.003
 })
 
 test_that("get_z handles missing members", {
-  expect_true(is.na(get_z(OBS=NA, PoC=0.4, db=0.01, w=0.5)))
-  expect_true(is.na(get_z(OBS=0.8, PoC=NA, db=0.01, w=0.5)))
-})
-
-test_that("get_beta_density is equations and transform handling are correct", {
-  # NEED TO BE MODIFIED WHEN GAMMA CALCULATION IS CORRECTED.
-  # mu = 0.1 + 0.4=0.5
-  # sigma =0.1 + 0.1 = 0.2
-  # gamma = 5.25
-  with_mock(dbeta_gamma_rho=function(...) return(sum(...)),
-            expect_equal(get_beta_density(OBS=0.25, FCST=0.5, B0=0.1, B1=0.8, C0=0.1, C1=0.2, B_transform=NA, C_transform=NA), 6))
-  with_mock(dbeta_gamma_rho=function(...) return(sum(...)),
-            expect_equal(get_beta_density(OBS=0.25, FCST=0.5, B0=0.1, B1=0.8, C0=0.1, C1=0.2, B_transform=function(x) (x), C_transform=NA), 6))
-  with_mock(dbeta_gamma_rho=function(...) return(sum(...)),
-            expect_equal(get_beta_density(OBS=0.25, FCST=0.5, B0=0.1, B1=0.8, C0=0.1, C1=0.2, B_transform=NA, C_transform=function(x) (0)), 24+0.25+0.5))
-})
-
-test_that("get_beta_density throws error", {
-  # Get negative gamma calculation -- PLACEHOLDER UNTIL I DOUBLE-CHECK/FIX THIS
-  expect_error(get_beta_density(OBS=0.75, FCST=0.5, B0=0.05, B1=0.1, C0=0.5, C1=0.8), "Non-positive*")
-})
-
-test_that("get_beta_density is returns NA's", {
-  expect_equal(get_beta_density(OBS=NA, FCST=0.5, B0=0.1, B1=0.8, C0=0.1, C1=0.2), NA)
-  expect_equal(get_beta_density(OBS=0.5, FCST=NA, B0=0.1, B1=0.8, C0=0.1, C1=0.2), NA)
-  expect_equal(get_beta_density(OBS=1, FCST=0.5, B0=0.1, B1=0.8, C0=0.1, C1=0.2), NA)
+  expect_true(is.na(get_z(OBS=NA, PoC=0.4, db=0.01, w=0.5, tol=1e-6)))
+  expect_true(is.na(get_z(OBS=0.8, PoC=NA, db=0.01, w=0.5, tol=1e-6)))
 })
 
 test_that("e_step array handling is correct.", {
@@ -47,26 +23,26 @@ test_that("e_step array handling is correct.", {
   B0 <- array(data=-1*(1:8), dim = c(2,2,2))
   B1 <- array(data=1:8, dim = c(2,2,2))
   C0 <- 1
-  C1 <- 2
   w <- c(10, 20)
   PoC <- array(data=3*(1:8), dim = c(2,2,2))
   OBS <- matrix(1:4, ncol=2)
 
-  with_mock(get_beta_density=function(OBS, FCST, B0, B1, C0, C1, ...) {return(sum(OBS, FCST, B0, B1, C0, C1))}, # 1+ 2-1+1+(1+2) = 6; c(6, 9, 12, 15, 14, 17, 20, 23)
-            get_z= function(OBS, PoC, db, w) return(db-PoC+OBS+w), # c(3, 3, 3, 3, -1, -1, -1, -1) -> c(4, 5, 6, 7, 0, 1, 2, 3) -> c(14, 15, 16, 17, 20, 21, 22, 23)
-            OUT <- e_step(w, C0, C1, OBS, FCST, B0, B1, PoC, B_transform=NA, C_transform=NA))
-  expect_equal(OUT$z, array(c(14/34, 15/36, 16/38, 17/40, 20/34, 21/36, 22/38, 23/40), dim=c(2,2,2)))
-  expect_equal(OUT$sumz, matrix(c(34, 36, 38, 40), ncol=2))
+  with_mock(get_rho= function(FCST, B0, B1, ...) return(sum(FCST, B0, B1)),
+            get_gamma = function(rho, C0) return(sum(rho, C0)), # 3:2:17
+            dbeta_gamma_rho = function(OBS, gammas, rhos) return(sum(OBS, gammas, rhos)), # 6, 11, 16, 21, 22, 27, 32, 37
+            get_z= function(OBS, PoC, db, w, tol) return(db-PoC+OBS+w), #  c(4, 7, 10, 13, 8, 11, 14, 17 ) -> c(14, 17, 20, 23, 28, 31, 34, 37)
+            OUT <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform=NA, tol=NA))
+  expect_equal(OUT$z, array(c(14/42, 17/48, 20/54, 23/60, 28/42, 31/48, 34/54, 37/60), dim=c(2,2,2)))
+  expect_equal(OUT$sumz, matrix(c(42, 48, 54, 60), ncol=2))
 })
 
 test_that("em_subfunction is correct.", {
   with_mock(e_step=function(...) {return(list(z=(array(c(0.1, 0.2, 0.3, NA, seq(0.2, 0.8, by = 0.2), rep(NA, 4)), dim=c(2, 2, 3)))))},
-            optim=function(...) {return(list(convergence=0, par=c(2, 3)))},
-            OUT <- em_subfunction(FCST=array(1:12, dim = c(2,2,3)), OBS=NA, PoC=NA, B0=NA, B1=NA, C0=4, C1=6, w=c(1, 0.7, 0)))
+            optim=function(...) {return(list(convergence=0, par=2))},
+            OUT <- em_subfunction(FCST=array(1:12, dim = c(2,2,3)), OBS=NA, PoC=NA, B0=NA, B1=NA, C0=4, w=c(1, 0.7, 0), tol=NA))
   expect_equal(OUT$w, c(0.2, 0.5, 0))
   expect_equal(OUT$C0, 2)
-  expect_equal(OUT$C1, 3)
-  expect_equal(abs(OUT$error), c(0.8, 0.2, 0, 2, 3))
+  expect_equal(abs(OUT$error), c(0.8, 0.2, 0, 2))
 })
 
 test_that("beta1_ens_modesl throws errors", {
@@ -134,4 +110,45 @@ test_that("get_lr handles transform", {
   )
   expect_equal(OUT_transform[,'x'], c(0.3, 0.5, 0.7))
   expect_equal(OUT_no_transform[,'x'], c(0.2, 0.4, 0.6))
+})
+
+test_that("get_rho handles transforms correctly", {
+  expect_equal(get_rho(FCST=0.5, B0=0.25, B1=1, B_transform=NA), 0.75)
+  expect_equal(get_rho(FCST=0.5, B0=0.25, B1=1, B_transform=function(x) return(x-0.25)), 0.5)
+})
+
+test_that("get_rho truncates a touch below 1",{
+  expect_equal(get_rho(FCST=2, B0=1, B1=0.5, B_transform=NA), 1-1e-6)
+})
+
+test_that("get_rho handles NA's", {
+  expect_true(is.na(get_rho(FCST=NA, B0=1, B1=0.5, B_transform=NA)))
+  expect_true(is.na(get_rho(FCST=0.5, B0=NA, B1=NA, B_transform=NA)))
+})
+
+test_that("get_gamma calculation is correct", {
+  # Example under the theoretical limit
+  expect_equal(get_gamma(mu=0.7, C0=0.1), 0.21/0.084 - 1) # sigma = sqrt(0.1-0.4*0.04), gamma = 0.21/0.984 - 1
+  # Example over the theoretical limit
+  expect_equal(get_gamma(mu=0.7, C0=0.25), 0.21/(sqrt(0.21)-1e-6)^2 - 1) # sigma = sqrt(0.21)-1e-6
+})
+
+
+test_that("get_gamma handles NA's", {
+  expect_true(is.na(get_gamma(mu=NA, C0=0.1)))
+})
+
+test_that("dbeta_gamma_rho is correct", {
+  expect_equal(dbeta_gamma_rho(x=0.5, g=2+2, rho=2/(2+2)), 1.5) # for alpha=beta=2
+})
+
+test_that("dbeta_gamma_rho handles NA's", {
+  expect_true(is.na(dbeta_gamma_rho(x = NA, g=4, rho = 0.5)))
+  expect_true(is.na(dbeta_gamma_rho(x = 0.5, g=NA, rho = NA)))
+})
+
+test_that("get_log_lik is correct",{
+  with_mock(e_step=function(...) return(list(sumz=c(NA, exp(2), exp(5)))),
+            expect_equal(get_log_lik(C0=NA, w=NA, OBS=NA, FCST=NA, B0=NA, B1=NA, PoC=NA, B_transform=NA, tol=NA), 7)
+  )
 })
