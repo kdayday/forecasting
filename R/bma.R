@@ -79,7 +79,7 @@ get_lm <- function(fc, tel, form, B_transform, tol.clip){
 }
 
 # Expectation-maximization function, modified from code courtesy of Will Kleiber
-em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol.clip, C0=0.06, eps=1e-005, maxiter=1000, start.w=NULL)
+em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol.clip, C0=0.06, eps=1e-005, maxiter=1000, CM2.iter=50, start.w=NULL)
 
     # MODEL for one forecast : y_s is solar power, logit P(y_s = 1 | f) = a0 + a1 f
     #                          solar power level, conditional on it being less than rated power (i.e., 1) is beta distributed
@@ -98,6 +98,7 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol.clip
 #  C0 starting estimate of C0, which is assumed constant across sites and members (equal variances among ensemble member)
 #  eps     stopping criterion
 #  maxiter maximum number of EM iterations allowed
+#  CM2.iter CM-2 step of EM algorithm will be run every CM2.iter iterations of the M and CM-1 steps
 #  start.w initial values for the weights (optional)
 
 {
@@ -114,7 +115,7 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol.clip
   # main EM algorithm
   while((max(abs(error)) > eps) && (count < maxiter))
   {
-    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol.clip)
+    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol.clip, count, CM2.iter)
     C0 <- new_params$C0
     w <- new_params$w
     error <- new_params$error
@@ -139,25 +140,28 @@ get_initial_weights <- function(start.w, avail) {
   return(w)
 }
 
-em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol.clip) {
+em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol.clip, count, CM2.iter) {
   ## E step
   z <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol.clip)$z
 
-  ## M step
+  ## CM-1 step
   # new weights and variance deflation
   # n members = dim(FCST)[3]
   w.new <- sapply(1:dim(FCST)[3], function(k) {ifelse(any(!is.na(z[,,k])), mean(z[,,k], na.rm=TRUE), 0)})
 
-  # --------------------------------
+  ## CM-1 step
   # Using the new w estimate, re-optimize C0
-  opt <- optimize(get_log_lik, interval=c(0, 0.25), w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform, tol.clip=tol.clip,
-                  maximum = T)
+  if (count%%CM2.iter == 0) {
+    opt <- optimize(get_log_lik, interval=c(0, 0.25), w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform, tol.clip=tol.clip,
+                    maximum = T)
+    C0.new <- opt$maximum
+  } else C0.new <- C0
 
   # Complete list of changes to all w and c parameters
-  error <- c(mapply("-", w.new, w), opt$maximum - C0)
+  error <- c(mapply("-", w.new, w), C0.new - C0)
   #-----------------------------
 
-  return(list(C0=opt$maximum, error=error, w=w.new))
+  return(list(C0=C0.new, error=error, w=w.new))
 }
 
 ## E step subfunction
