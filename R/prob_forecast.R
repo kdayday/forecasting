@@ -82,7 +82,7 @@ plot_pdf <- function(x, ...) {
 #' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional vine copula.
 #' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
 #'
-#' @param dat A matrix of training data [ntrain x nsites]
+#' @param data.train A matrix of training data [ntrain x nsites]
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param training_transform_type Transform of training data into uniform domain (see marg_transform "cdf.method")
@@ -90,17 +90,17 @@ plot_pdf <- function(x, ...) {
 #' @param n An integer, number of copula samples to take
 #' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_vine_forecast <- function(dat, location, time,
+prob_nd_vine_forecast <- function(data.train, location, time,
                                   training_transform_type="empirical", results_transform_type='empirical', n=3000, ...) {
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
-  if (class(dat)!='matrix') stop('Input data must be a matrix')
-  if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
+  if (class(data.train)!='matrix') stop('Input data must be a matrix')
+  if (dim(data.train)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
 
-  tr <- calc_transforms(dat, training_transform_type, results_transform_type, ...)
+  tr <- calc_transforms(data.train, training_transform_type, results_transform_type, ...)
   training_transforms <- tr$training
   results_transforms <- tr$results
 
-  uniform_dat <- mapply(function(n, t) {to_uniform(t, dat[,n])}, colnames(dat, do.NULL=FALSE), training_transforms)
+  uniform_dat <- mapply(function(n, t) {to_uniform(t, data.train[,n])}, colnames(data.train, do.NULL=FALSE), training_transforms)
   model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
 
   # Initialize probabilistic forecast
@@ -109,7 +109,7 @@ prob_nd_vine_forecast <- function(dat, location, time,
               location = location,
               time = time,
               model = model,
-              d = dim(dat)[2],
+              d = dim(data.train)[2],
               n=n
               )
   x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
@@ -350,16 +350,16 @@ qc_input <- function(dat) {
 #' Its rank quantiles are the basic quantiles estimated from the ensemble members; the quantiles are the rank quantiles iterpolated
 #' to the quantiles of interest (i.e., 10%, 20%, etc...)
 #'
-#' @param dat A numeric vector of ensemble members
+#' @param members A numeric vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_1d_rank_forecast <- function(dat, location, time, ...) {
-  dat <- qc_input(dat)
+#' @return A 1-dimensional probabilistic forecast object
+prob_1d_rank_forecast <- function(members, location, time, ...) {
+  members <- qc_input(members)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
-              rank_quantiles = list(x=sort(dat), y=(0:(length(dat)-1))/(length(dat)-1)),
+              rank_quantiles = list(x=sort(members), y=(0:(length(members)-1))/(length(members)-1)),
               time = time,
               d = 1)
 
@@ -397,18 +397,18 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 
 #' Initialize a univariate probabilistic power forecast for a specific time point using kernel density estimation. See kde_methods.R for more details
 #'
-#' @param dat A vector of ensemble members
+#' @param members A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param cdf.method KDE method selection, see kde_methods.R for details
 #' @param ... Additional parameters passed on the KDE method
-#' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_1d_kde_forecast <- function(dat, location, time, cdf.method='geenens', ...) {
-  dat <- qc_input(dat)
+#' @return A 1-dimensional probabilistic forecast object
+prob_1d_kde_forecast <- function(members, location, time, cdf.method='geenens', ...) {
+  members <- qc_input(members)
 
   func <- kde_lookup(cdf.method)
   # Get selected KDE
-  model <- func(dat, ...)
+  model <- func(members, ...)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
