@@ -186,11 +186,12 @@ get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, tol) {
 }
 
 # Get z for single instance
+# Returns NA for missing values and observations exactly at 0
 # density is (PoC)*1[obs==1] + (1-PoC)*Beta(obs,a,b)*1[obs < 1]
 # Uses tolerance to determine if obs == 1
 get_z <- function(OBS, PoC, db, w, tol) {
-  if (is.na(OBS)) {return(NA)}
   else return(ifelse(abs(OBS-1) < tol, w*PoC, w*(1-PoC)*db))
+  if (is.na(OBS) | OBS==0) {return(NA)}
 }
 
 # Get PoC (probability of clipping) for single instance

@@ -18,6 +18,10 @@ test_that("get_z handles missing members", {
   expect_true(is.na(get_z(OBS=0.8, PoC=NA, db=0.01, w=0.5, tol=1e-6)))
 })
 
+test_that("get_z returns missing for observataions at 0", {
+  expect_true(is.na(get_z(OBS=0, PoC=0.4, db=0.01, w=0.5, tol=1e-6)))
+})
+
 test_that("e_step array handling is correct.", {
   FCST <- array(data=2*(1:8), dim = c(2,2,2))
   B0 <- array(data=-1*(1:8), dim = c(2,2,2))
