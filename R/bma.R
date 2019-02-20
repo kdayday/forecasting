@@ -9,23 +9,22 @@
 #' @param lm_formula Formula in terms of x,y for linear regression model, defaults to "y ~ x + 0"
 #' @param B_transform A function for transforming forecast data before linear regression to get b's (optional)
 #' @return A formula for a discrete-continuous mixture model with beta distribution
-beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, tol=1e-6) {
-  if (any(tel < 0, na.rm=T) | any(tel-1>tol, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
-  if (any(ens < 0, na.rm=T) | any(ens-1>tol, na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
+beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, tol.clip=1e-6) {
+  if (any(tel < 0, na.rm=T) | any(tel-1>tol.clip, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
+  if (any(ens < 0, na.rm=T) | any(ens-1>tol.clip, na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
   if (length(tel) != dim(ens)[1]) stop("Must have same number of telemetry and forecast time-points.")
 
   # 1. Logistic regression for a's
   # Returns a list of model summaries, one per member
-  mem_discrete_models <-lapply(seq_len(dim(ens)[2]), function(i) get_lr(ens[,i], tel=tel, form=lr_formula, A_transform = A_transform, tol=tol))
+  mem_discrete_models <-lapply(seq_len(dim(ens)[2]), function(i) get_lr(ens[,i], tel=tel, form=lr_formula, A_transform = A_transform, tol.clip=tol.clip))
   A0 <- sapply(mem_discrete_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
   A1 <- sapply(mem_discrete_models, function(m) return(m$coefficients["x", "Estimate"]))
 
   # 2. linear regression for b's.
-  mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel, form=lm_formula, B_transform = B_transform, tol=tol))
+  mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel, form=lm_formula, B_transform = B_transform, tol.clip=tol.clip))
   B0 <- sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
   B1 <- sapply(mem_mean_models, function(m) return(m$coefficients["x", "Estimate"]))
 
-  # browser()
   fit_statistics <- data.frame("A0 p-value"=sapply(mem_discrete_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Pr(>|z|)"], NA))),
                                "A1 p-value"=sapply(mem_discrete_models, function(m) return(m$coefficients["x", "Pr(>|z|)"])),
                                "A AIC"=sapply(mem_discrete_models, function(m) return(m$aic)),
@@ -40,7 +39,7 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
   array_dims <- c(ntime, 1, nens)
   tmp <- em(FCST=array(ens, dim=array_dims), OBS=array(tel, dim=c(ntime, 1)), A0=array(rep(A0, each=ntime), dim=array_dims),
             A1=array(rep(A1, each=ntime), dim=array_dims), A2=0, B0=array(rep(B0, each=ntime), dim=array_dims),
-            B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, tol=tol)
+            B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, tol.clip=tol.clip)
 
   return(list(A0=A0, A1=A1, B0=B0, B1=B1, C0=tmp$C0, w=tmp$w, fit_statistics=fit_statistics, log_lik=tmp$log_lik,
               A_transform=A_transform, B_transform=B_transform, em_count=tmp$count, em_error=tmp$max_error))
@@ -55,10 +54,10 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
 #' @param tel Vector of telemetry data on [0,1]
 #' @param form Formula in terms of x,y for logistic regression model
 #' @param A_transform A function for pre-transforming the forecast data (optional), e.g. function(X) return(log(x)+1)
-#' @param tol Tolerance for determining if clipping is occuring
+#' @param tol.clip Tolerance for determining if clipping is occurring
 #' @return Summary of the glm model
-get_lr <- function(fc, tel, form, A_transform, tol){
-  clipped <- as.integer(abs(tel-1) < tol)
+get_lr <- function(fc, tel, form, A_transform, tol.clip){
+  clipped <- as.integer(abs(tel-1) < tol.clip)
   if (typeof(A_transform)=="closure") fc <- sapply(fc, FUN = A_transform)
   return(summary(glm(form, family=binomial(link='logit'), data=data.frame(x=fc, y=clipped))))
 }
@@ -70,16 +69,16 @@ get_lr <- function(fc, tel, form, A_transform, tol){
 #' @param tel Vector of telemetry data on [0,1]
 #' @param form Formula in terms of x,y for logistic regression model
 #' @param B_transform A function for pre-transforming the forecast data (optional), e.g. function(X) return(log(x)+1)
-#' @param tol Tolerance for determining if clipping is occuring
+#' @param tol.clip Tolerance for determining if clipping is occurring
 #' @return Summary of the lm model
-get_lm <- function(fc, tel, form, B_transform, tol){
-  unclipped <- abs(tel-1) > tol
+get_lm <- function(fc, tel, form, B_transform, tol.clip){
+  unclipped <- abs(tel-1) > tol.clip
   if (typeof(B_transform)=="closure") fc <- sapply(fc, FUN = B_transform)
   return(summary(lm(form, data=data.frame(x=fc[unclipped], y=tel[unclipped]))))
 }
 
 # Expectation-maximization function, modified from code courtesy of Will Kleiber
-em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol, C0=0.06, eps=1e-005, maxiter=1000, start.w=NULL)
+em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol.clip, C0=0.06, eps=1e-005, maxiter=1000, start.w=NULL)
 
     # MODEL for one forecast : y_s is solar power, logit P(y_s = 1 | f) = a0 + a1 f
     #                          solar power level, conditional on it being less than rated power (i.e., 1) is beta distributed
@@ -114,14 +113,14 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol, C0=
   # main EM algorithm
   while((max(abs(error)) > eps) && (count < maxiter))
   {
-    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol)
+    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol.clip)
     C0 <- new_params$C0
     w <- new_params$w
     error <- new_params$error
     count <- count + 1
   }
 
-  lik <- get_log_lik(C0, w, OBS, FCST, B0, B1, PoC, B_transform, tol)
+  lik <- get_log_lik(C0, w, OBS, FCST, B0, B1, PoC, B_transform, tol.clip)
   return(list(loglik=lik, w=w, C0=C0, count=count, max_error=max(abs(error))))
 }
 
@@ -139,9 +138,9 @@ get_initial_weights <- function(start.w, avail) {
   return(w)
 }
 
-em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol) {
+em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol.clip) {
   ## E step
-  z <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol)$z
+  z <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol.clip)$z
 
   ## M step
   # new weights and variance deflation
@@ -150,19 +149,18 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, tol) {
 
   # --------------------------------
   # Using the new w estimate, re-optimize C0
-
-  optim_list <- optim(C0, get_log_lik, w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform, tol=tol, control = list(fnscale=-1))
-  if (optim_list$convergence != 0) stop(optim_list$message)
+  opt <- optimize(get_log_lik, interval=c(0, 0.25), w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform, tol.clip=tol.clip,
+                  maximum = T)
 
   # Complete list of changes to all w and c parameters
-  error <- c(mapply("-", w.new, w), optim_list$par - C0)
+  error <- c(mapply("-", w.new, w), opt$maximum - C0)
   #-----------------------------
 
-  return(list(C0=optim_list$par, error=error, w=w.new))
+  return(list(C0=opt$maximum, error=error, w=w.new))
 }
 
 ## E step subfunction
-e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol) {
+e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol.clip) {
   # Re-calculate beta density estimates based on current estimate for C0
   rhos <- array(mapply(get_rho, FCST, B0, B1, MoreArgs = list(B_transform=B_transform)), dim(FCST))
   gammas <- array(mapply(get_gamma, rhos, MoreArgs = list(C0=C0)), dim(FCST))
@@ -171,7 +169,7 @@ e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol) {
 
   # z is an array with the first entry being day, second entry site, third entry forecast
   # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
-  z_num <-  array(mapply(get_z, OBS, PoC, db, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(tol=tol)), dim(FCST)) # Linear indexing, OBS is recycled across members, w explicitly expanded
+  z_num <-  array(mapply(get_z, OBS, PoC, db, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(tol.clip=tol.clip)), dim(FCST)) # Linear indexing, OBS is recycled across members, w explicitly expanded
 
   # sumz is weighted sum of density functions across the members. Rows are single training days, columns are sites
   sumz <- apply(z_num, MARGIN=c(1,2), FUN=function(z) ifelse(all(is.na(z)), NA, sum(z, na.rm=T))) # If all members are missing, return NA; else sum the others.
@@ -180,8 +178,8 @@ e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol) {
 }
 
 # Define log likelihood subfunction for maximization step
-get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, tol) {
-  sumz <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol)$sumz
+get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, tol.clip) {
+  sumz <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, tol.clip)$sumz
   return(sum(log(sumz), na.rm=T))
 }
 
@@ -189,9 +187,9 @@ get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, tol) {
 # Returns NA for missing values and observations exactly at 0
 # density is (PoC)*1[obs==1] + (1-PoC)*Beta(obs,a,b)*1[obs < 1]
 # Uses tolerance to determine if obs == 1
-get_z <- function(OBS, PoC, db, w, tol) {
-  else return(ifelse(abs(OBS-1) < tol, w*PoC, w*(1-PoC)*db))
+get_z <- function(OBS, PoC, db, w, tol.clip) {
   if (is.na(OBS) | OBS==0) {return(NA)}
+  else return(ifelse(abs(OBS-1) < tol.clip, w*PoC, w*(1-PoC)*db))
 }
 
 # Get PoC (probability of clipping) for single instance
