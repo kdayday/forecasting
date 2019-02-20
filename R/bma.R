@@ -8,8 +8,9 @@
 #' @param A_transform A function for transforming forecast data before logistic regression to get a's (optional)
 #' @param lm_formula Formula in terms of x,y for linear regression model, defaults to "y ~ x + 0"
 #' @param B_transform A function for transforming forecast data before linear regression to get b's (optional)
+#' @param ... Optional arguments to pass to EM algorithm
 #' @return A formula for a discrete-continuous mixture model with beta distribution
-beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, tol.clip=1e-6) {
+beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, tol.clip=1e-6, ...) {
   if (any(tel < 0, na.rm=T) | any(tel-1>tol.clip, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
   if (any(ens < 0, na.rm=T) | any(ens-1>tol.clip, na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
   if (length(tel) != dim(ens)[1]) stop("Must have same number of telemetry and forecast time-points.")
@@ -39,7 +40,7 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
   array_dims <- c(ntime, 1, nens)
   tmp <- em(FCST=array(ens, dim=array_dims), OBS=array(tel, dim=c(ntime, 1)), A0=array(rep(A0, each=ntime), dim=array_dims),
             A1=array(rep(A1, each=ntime), dim=array_dims), A2=0, B0=array(rep(B0, each=ntime), dim=array_dims),
-            B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, tol.clip=tol.clip)
+            B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, tol.clip=tol.clip, ...)
 
   return(list(A0=A0, A1=A1, B0=B0, B1=B1, C0=tmp$C0, w=tmp$w, fit_statistics=fit_statistics, log_lik=tmp$log_lik,
               A_transform=A_transform, B_transform=B_transform, em_count=tmp$count, em_error=tmp$max_error))
