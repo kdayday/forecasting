@@ -249,7 +249,7 @@ get_gamma <- function(mu, C0) {
 #' @param g Gamma = alpha + beta
 #' @param rho rho = alpha/(alpha + beta)
 dbeta_gamma_rho <- function(x, g, rho) {
-  if (is.na(x) | is.na(g) | is.na(rho)) return(NA)
+  if (all(is.na(x)) | is.na(g) | is.na(rho)) return(NA)
   gamma(g)/(gamma(g*rho)*gamma(g*(1-rho)))*x^(g*rho-1)*(1-x)^((1-rho)*g-1)
 }
 
