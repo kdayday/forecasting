@@ -42,7 +42,7 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
             A1=array(rep(A1, each=ntime), dim=array_dims), A2=0, B0=array(rep(B0, each=ntime), dim=array_dims),
             B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, tol.clip=tol.clip, ...)
 
-  return(list(A0=A0, A1=A1, B0=B0, B1=B1, C0=tmp$C0, w=tmp$w, fit_statistics=fit_statistics, log_lik=tmp$log_lik,
+  return(list(A0=A0, A1=A1, A2=0, B0=B0, B1=B1, C0=tmp$C0, w=tmp$w, fit_statistics=fit_statistics, log_lik=tmp$log_lik,
               A_transform=A_transform, B_transform=B_transform, em_count=tmp$count, em_error=tmp$max_error))
 }
 
