@@ -395,6 +395,102 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 
 # ---------------------------------------------------------------------------------------------
 
+#' Initialize a univariate probabilistic power forecast for a specific time point using Bayesian model averaging (BMA)
+#'
+#' @param members A vector of ensemble members
+#' @param location A string
+#' @param time A lubridate time stamp
+#' @param model A pre-fit BMA model from beta1_ens_models
+#' @param max_power Maximum power for normalizing forecast to [0,1]
+#' @param ... Additional parameters
+#' @return A 1-dimensional probabilistic forecast object
+prob_1d_bma_forecast <- function(members, location, time, model, max_power, ...) {
+  members <- qc_input(members)
+
+  # Initialize probabilistic forecast
+  dat <- list(location = location,
+              time = time,
+              d = 1,
+              model=model,
+              members=members,
+              max_power=max_power
+  )
+  x <- structure(dat, class = c("prob_forecast", "prob_1d_bma_forecast"))
+
+  # Complete probabilistic forecast by sampling and aggregating
+  x$quantiles <- calc_quantiles(x)
+  return(x)
+}
+
+#' Check class
+is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
+
+
+#' Calculate forecast quantiles
+#' @param x prob_1d_bma_forecast object
+#' @param quantiles Sequence of quantiles in (0,1)
+#' @return A named numeric vector of estimated quantiles
+calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
+  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+
+  model <- get_discrete_continuous_model(x)
+  stop("not implemented")
+}
+
+#' @param x prob_1d_bma_forecast object
+#' @param xseq Vector of x values in [0,1] to evaluate
+#' @return A list of the discrete components (PoC) and continuous components () for each member
+get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
+  # Normalize to [0,1]
+  members.norm <- sapply(x$members, function(m) ifelse(m <= x$max_power, m/x$max_power, 1))
+
+  # Get parameters for individual ensemble members
+  PoC <- mapply(get_poc, members.norm, x$model$A0, x$model$A1, x$model$A2, MoreArgs=list(A_transform=x$model$A_transform))
+  rhos <- mapply(get_rho, members.norm, x$model$B0, x$model$B1, MoreArgs = list(B_transform=x$model$B_transform))
+  gammas <- mapply(get_gamma, rhos, MoreArgs = list(C0=x$model$C0))
+
+  # Get sequence of beta probabilities, by ensemble member. Returns matrix of [xseq x members]
+  beta_seq <- mapply(function(g, r, poc, w, xseq) return((1-poc)*w*dbeta_gamma_rho(xseq, g, r)), gammas, rhos, PoC, x$model$w, MoreArgs = list(xseq=xseq))
+
+  # Calculate overall distribution
+  PoC_total <- sum(x$model$w*PoC)
+  beta_total <- apply(X=beta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+
+  # Invert normalization of beta components back to [0, max power]
+  return(list(PoC=PoC_total, dbeta=beta_total/x$max_power, xseq=xseq*x$max_power, members=list(PoC=PoC, dbeta=beta_seq/x$max_power)))
+}
+
+# Plot BMA probability density function, including the member component contributributions
+plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
+
+  model <- get_discrete_continuous_model(x)
+
+  # Avoid Inf's on the boundaries
+  xrange <- 2:(length(model$xseq)-1)
+  ymax <- ifelse(is.na(ymax), max(model$dbeta[xrange])+0.5, ymax)
+
+  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta[xrange]), mapping=aes(x=x, y=y)) +
+    ggplot2::geom_line(size=2) +
+    ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=2) +
+    ggplot2::xlab("Power [MW]") +
+    ggplot2::ylab("Probability") +
+    ggplot2::geom_point(data=data.frame(x=x$members, y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
+
+  if (!is.na(actual)) {
+    g <- g + ggplot2::geom_line(data=data.frame(x=c(actual, actual), y=c(0, ymax)), linetype="dashed")
+  }
+
+  for (i in seq_len(dim(model$members$dbeta)[2])) {
+    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta[xrange,i]), mapping=aes(x=x, y=y), col="black")
+  }
+
+  plot(g)
+}
+
+
+
+# ---------------------------------------------------------------------------------------------
+
 #' Initialize a univariate probabilistic power forecast for a specific time point using kernel density estimation. See kde_methods.R for more details
 #'
 #' @param members A vector of ensemble members
