@@ -434,7 +434,17 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.05, 0.95, by=
   if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
 
   model <- get_discrete_continuous_model(x)
-  stop("not implemented")
+
+  xrange <- ifelse(is.infinite(model$dbeta[1]), 2, 1):ifelse(is.infinite(tail(model$dbeta,1)), length(model$dbeta)-1, length(model$dbeta))
+
+  u <- pracma::cumtrapz(model$xseq[xrange], model$dbeta[xrange])
+  xseq<- stats::approx(x=u, y=model$xseq[xrange], xout=quantiles, yleft=0, yright=x$max_power)$y
+
+  # Overwrite based on discrete component
+  xseq[quantiles >= 1-model$PoC] <- x$max_power
+
+  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
+  return(xseq)
 }
 
 #' @param x prob_1d_bma_forecast object
