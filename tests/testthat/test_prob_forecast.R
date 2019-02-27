@@ -290,3 +290,4 @@ test_that("BMA quantile calculation handles infinities on boundaries", {
             OUT <- calc_quantiles(fake_x, quantiles=c(0.125, 0.8, 0.9)))
   expect_equal(unname(OUT), c(0.5, 3, 3))
 })
+
