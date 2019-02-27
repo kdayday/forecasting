@@ -147,16 +147,29 @@ plot_cvar_over_time <- function(x) {
 #' @param tel A vector of the telemetry values
 #' @param fc A vector of data from the time series forecast
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
+#' @param align Can be "top of hour" or "half hour". Defaults to "half hour"
 #' @return list of the telemetry and forecast data vectors, of equal length
-equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE) {
-  # Pre-process vectors to same lengths
-  if (length(tel) != length(fc) & length(tel) %% length(fc) > 0) stop("Telemetry length must be equal to or a multiple of forecast length.")
+equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="half hour") {
+  if (!(align %in% c("top of hour", "half hour"))) stop(paste("Unknown method for align. Given ", align, sep=''))
+  if (length(tel) != length(fc) & length(tel) %% length(fc) > 0) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+
   tel_2_fc <- length(tel)/length(fc)
-  if (agg & tel_2_fc > 1) {  # Aggregate telemetry
-    tel <- sapply(seq_along(fc), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
-  } else {  # Expand forecast data
-    fc <- rep(fc, each=tel_2_fc)
+  if (tel_2_fc > 1) {
+    if (align=="top of hour") {
+      if (agg) {
+        tel <- sapply(seq_along(fc), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
+      } else {
+        fc <- rep(fc, each=tel_2_fc)
+      }
+    } else { # align == "half hour"
+      if (agg) {
+        tel <- c(NA, sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
+      } else {
+        fc <- c(rep(fc[1], each=tel_2_fc/2), rep(fc[-1], each=tel_2_fc), rep(NA, each=tel_2_fc/2))
+      }
+    }
   }
+
   return(list(tel=tel, fc=fc, tel_2_fc=tel_2_fc))
 }
 
