@@ -72,15 +72,28 @@ test_that("Check sun-up works correctly", {
   expect_identical(OUT, c(FALSE, TRUE, FALSE))
 })
 
-test_that("Integrate telemetry throws error on inputs of wrong length.", {
+test_that("Equalize telemetry throws error on input checks.", {
   expect_error(equalize_telemetry_forecast_length(tel=c(10, 15), fc=c(3, 4, 5)), '*multiples*')
+  expect_error(equalize_telemetry_forecast_length(tel=c(10, 15), fc=c(3, 4), align="end of hour"), 'Unknown method*')
 })
 
-test_that("Integrate telemetry calculation is correct", {
-  expect_equal(equalize_telemetry_forecast_length(tel=1:4, fc=5:8, agg=TRUE), list(tel=1:4, fc=5:8, tel_2_fc=1))
-  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 3, 9, 9), fc=1:2, agg=TRUE), list(tel=c(1, 7), fc=1:2, tel_2_fc=3))
-  expect_equal(equalize_telemetry_forecast_length(tel=1:4, fc=5:8, agg=FALSE), list(tel=1:4, fc=5:8, tel_2_fc=1))
-  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 3, 9, 9), fc=1:2, agg=FALSE), list(tel=c(1, 0, 2, 3, 9, 9), fc=c(1,1,1,2,2,2), tel_2_fc=3))
+test_that("Equalize telemetry does nothing for equal length forecasts", {
+  expect_equal(equalize_telemetry_forecast_length(tel=1:4, fc=5:8), list(tel=1:4, fc=5:8, tel_2_fc=1))
+})
+
+test_that("Equalize telemetry calculation is correct for top of hour", {
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 3, 9, 9), fc=1:2, agg=TRUE, align="top of hour"), list(tel=c(1, 7), fc=1:2, tel_2_fc=3))
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 3, 9, 9), fc=1:2, agg=FALSE, align="top of hour"), list(tel=c(1, 0, 2, 3, 9, 9), fc=c(1,1,1,2,2,2), tel_2_fc=3))
+})
+
+test_that("Equalize telemetry calculation is correct for half-hour alignment", {
+  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=TRUE), list(tel=c(NA, 18, 34)/4, fc=1:3, tel_2_fc=4))
+  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=FALSE), list(tel=1:12, fc=c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, NA, NA), tel_2_fc=4))
+})
+
+test_that("Integrate telemetry calculation handles NA's correctly", {
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1:4, NaN), fc=1:5, align="top of hour"), list(tel=c(1:4,NaN), fc=1:5, tel_2_fc=1)) # NA's get passed through
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, NaN, 3, 9, 9, NaN, NaN, NaN), fc=1:3, align="top of hour"), list(tel=c(NaN, 7, NaN), fc=1:3, tel_2_fc=3)) # Time periods with at least one NA get NAN
 })
 
 test_that("Calculation of number of time points without night-time and NaN's in telemetry is correct", {
@@ -94,11 +107,6 @@ test_that("Calculation of number of time points without night-time and NaN's in 
   expect_equal(result$"Telemetry is 0 when sun forecasted down", 1)
   expect_equal(result$"Telemetry is non-zero when sun forecasted down", 2)
   expect_equal(result$"Telemetry is NaN when sun forecasted down", 3)
-})
-
-test_that("Integrate telemetry calculation handles NA's correctly", {
-  expect_equal(equalize_telemetry_forecast_length(tel=c(1:4, NaN), fc=1:5), list(tel=c(1:4,NaN), fc=1:5, tel_2_fc=1)) # NA's get passed through
-  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, NaN, 3, 9, 9, NaN, NaN, NaN), fc=1:3), list(tel=c(NaN, 7, NaN), fc=1:3, tel_2_fc=3)) # Time periods with at least one NA get NAN
 })
 
 x1 <- structure(list(quantiles=seq(10, 90, 10), n=2), class="prob_forecast")

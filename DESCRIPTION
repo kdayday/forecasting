@@ -14,6 +14,7 @@ Encoding: UTF-8
 LazyData: true
 Imports: 
     EnvStats,
+    ggplot2,
     KernSmooth,
     ks,
     lubridate,

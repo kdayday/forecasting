@@ -3,6 +3,7 @@ context("Test forecasting context")
 library(forecasting)
 library(rvinecopulib)
 library(stats)
+library(pracma)
 
 mock_samp <- function(x) "A sample"
 mock_pd <- function(x,y) "A pd"
@@ -246,3 +247,47 @@ test_that("1d KDE CVAR estimate is correct", {
   # Low side: CVAR = (1/0.2)*trapz from (5,0.05) to (25, 0.25) = (1/0.2)*3 = 15
   expect_equal(OUT, list(cvar=list(low=15, high=95), var=list(low=25, high=85)))
 })
+
+test_that("1D BMA forecast discrete-continuous model normalization & summation is correct", {
+  PoC <- c(0, 0.1, 0.5)
+  mem <- c(1, 5, 11) # Last should be truncated
+  w <- c(0.5, 0.1, 0.4)
+  xseq <- seq(0.25, 0.75, by=0.25)
+  mp <- 10
+  fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA),
+                           max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
+
+  with_mock(get_poc = function(x, A, ...) return(A),
+            get_rho = function(x, ...) return(x),
+            get_gamma = function(x, ...) return(x),
+            dbeta_gamma_rho = function(xseq, g, r) return(xseq*g),
+            out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
+  expect_equal(out$members$PoC, PoC)
+  expect_equal(out$PoC, 0.21)
+  expect_equal(out$members$dbeta, matrix(c(0.5*xseq*0.1*(1)/mp, 0.1*xseq*0.5*(1-0.1)/mp, 0.4*xseq*1*(1-0.5)/mp), ncol=3))
+  expect_equal(out$xseq, xseq*mp)
+  mem_sum <- 0.1*1*0.5 + 0.5*0.9*0.1 + 1*0.5*0.4
+  expect_equal(out$dbeta, xseq*mem_sum/mp)
+})
+
+test_that("BMA quantile throws error", {
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_bma_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
+  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_bma_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
+})
+
+test_that("BMA quantile calculation handles infinities on boundaries", {
+  # Unknown quantiles on the left are set to 0
+  fake_x <- structure(list(max_power=3, model=list(PoC=0.1, dbeta=c(Inf, seq(0.25, 1, by=0.25)), xseq=seq(0, 4, by=1))), class = c("prob_forecast", "prob_1d_bma_forecast"))
+  with_mock(get_discrete_continuous_model = function(x) return(x$model),
+            cumtrapz = function(x, y) return(y),
+            OUT <- calc_quantiles(fake_x, quantiles=c(0.2, 0.375)))
+  expect_equal(unname(OUT), c(0, 1.5))
+
+  # Unknown quantiles on the rgight are set to rated power (in this case, the quantile at 0.8)
+  fake_x <- structure(list(max_power=3, model=list(PoC=0.1, dbeta=c(seq(0, 0.75, by=0.25), Inf), xseq=seq(0, 4, by=1))), class = c("prob_forecast", "prob_1d_bma_forecast"))
+  with_mock(get_discrete_continuous_model = function(x) return(x$model),
+            cumtrapz = function(x, y) return(y),
+            OUT <- calc_quantiles(fake_x, quantiles=c(0.125, 0.8, 0.9)))
+  expect_equal(unname(OUT), c(0.5, 3, 3))
+})
+
