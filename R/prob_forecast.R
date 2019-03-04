@@ -174,7 +174,7 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
 #' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with cVaR calculation
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.05, 0.95, by=0.05)) {
+calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.01, 0.99, by=0.01)) {
   if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
 
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
@@ -377,7 +377,7 @@ is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
 #' @param x prob_1d_rank_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
+calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
   if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
   xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
 
@@ -430,7 +430,7 @@ is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
 #' @param x prob_1d_bma_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
+calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
   if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
 
   model <- get_discrete_continuous_model(x)
@@ -537,7 +537,7 @@ is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
 #' @param x prob_1d_kde_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
+calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
   if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
   xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=quantiles)$y
 
