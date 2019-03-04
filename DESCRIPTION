@@ -29,6 +29,7 @@ Suggests:
     colorspace,
     corrplot,
     fanplot,
+    ncdf4,
     RColorBrewer,
     testthat,
     zeallot
