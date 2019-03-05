@@ -151,36 +151,44 @@ plot_cvar_over_time <- function(x) {
 #' @return list of the telemetry and forecast data vectors, of equal length
 equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="half hour") {
   if (!(align %in% c("top of hour", "half hour"))) stop(paste("Unknown method for align. Given ", align, sep=''))
-  if (length(tel) != length(fc) & length(tel) %% length(fc) > 0) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+  if (length(tel) != length(fc) & (length(tel) < length(fc) | length(tel) %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
 
   tel_2_fc <- length(tel)/length(fc)
+
+  # Default translation from telemetry index to forecast index
+  index_translation <- function(i) {i}
+
   if (tel_2_fc > 1) {
     if (align=="top of hour") {
       if (agg) {
         tel <- sapply(seq_along(fc), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
       } else {
         fc <- rep(fc, each=tel_2_fc)
+        # Modified translation function to align more frequent telemetry with forecast:
+        index_translation <- purrr::partial(function(i, tel_2_fc) {floor((i-1)/tel_2_fc)+1}, tel_2_fc=tel_2_fc)
       }
     } else { # align == "half hour"
       if (agg) {
         tel <- c(NA, sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
       } else {
         fc <- c(rep(fc[1], each=tel_2_fc/2), rep(fc[-1], each=tel_2_fc), rep(NA, each=tel_2_fc/2))
+        # Modified translation function to align more frequent telemetry with forecast
+        index_translation <- purrr::partial(function(i, tel_2_fc) {ceiling((i-0.5*tel_2_fc)/tel_2_fc)+1}, tel_2_fc=tel_2_fc)
       }
     }
   }
 
-  return(list(tel=tel, fc=fc, tel_2_fc=tel_2_fc))
+  return(list(tel=tel, fc=fc, tel_2_fc=tel_2_fc, translate_forecast_index=index_translation ))
 }
 
 #' Get statistics on the prevalence of NaN's in telemetry and sun-up/sun-down discrepancies
 #'
 #' @param tel A vector of the telemetry values
 #' @param len_ts Number of timesteps in the time series forecast
-#' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
+#' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @param return A list of summary statistics
-get_sundown_and_NaN_stats <- function(ts, tel, agg=TRUE) {
-  res <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
+get_sundown_and_NaN_stats <- function(ts, tel, ...) {
+  res <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- res$fc
   tel <- res$tel
 
@@ -208,13 +216,12 @@ get_sundown_and_NaN_stats <- function(ts, tel, agg=TRUE) {
 #'
 #' @param ts A ts_forecast object
 #' @param tel A vector of the telemetry values
-#' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
-CRPS_avg <-function(ts, tel, agg=TRUE){
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+CRPS_avg <-function(ts, tel, ...){
+  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- x$fc
 
-  crps_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
-    return(CRPS(ts$forecasts[[j]], x$tel[i]))})
+  crps_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])))
   return(list(mean=mean(crps_list), min=min(crps_list), max=max(crps_list), sd=stats::sd(crps_list)))
 }
 
@@ -225,14 +232,14 @@ CRPS_avg <-function(ts, tel, agg=TRUE){
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param alpha Threshold probability of exceedance, numeric [0,1]
-#' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
+#' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the Brier score
-Brier <- function(ts, tel, alpha, agg=TRUE) {
+Brier <- function(ts, tel, alpha, ...) {
   if (alpha < 0 | alpha > 1) stop(paste("alpha must be [0,1], given ", alpha, '.', sep=''))
   thresholds <- get_quantile_time_series(ts, 100*(1-alpha))
 
-  thresholds <- equalize_telemetry_forecast_length(tel, thresholds, agg=agg)$fc
-  res <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
+  thresholds <- equalize_telemetry_forecast_length(tel, thresholds, ...)$fc
+  res <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- res$fc
   tel <- res$tel
 
@@ -244,13 +251,13 @@ Brier <- function(ts, tel, alpha, agg=TRUE) {
 #'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
-#' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
+#' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the MAE value
 
-MAE <-function(ts, tel, agg=TRUE) {
+MAE <-function(ts, tel, ...) {
   medians <- get_quantile_time_series(ts, 50)
-  sun_up <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)$fc
-  res <- equalize_telemetry_forecast_length(tel, medians, agg=agg)
+  sun_up <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)$fc
+  res <- equalize_telemetry_forecast_length(tel, medians, ...)
   medians <- res$fc
   tel <- res$tel
   return(mean(abs(medians[sun_up & !is.na(tel)]-tel[sun_up & !is.na(tel)]), na.rm = TRUE))
@@ -263,22 +270,21 @@ MAE <-function(ts, tel, agg=TRUE) {
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
-#' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
+#' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average IS value
-IS_avg <-function(ts, tel, alpha, agg=TRUE) {
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
+IS_avg <-function(ts, tel, alpha, ...) {
+  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- x$fc
-  is_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) {if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
-    IS(ts$forecasts[[j]], x$tel[i], alpha=alpha)})
+  is_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)})
   return(list(mean=mean(is_list), min=min(is_list), max=max(is_list), sd=stats::sd(is_list)))
 }
 
 #' Plot diagonal line diagram of quantiles + observations
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
-#' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
-plot_reliability <- function(ts, tel, agg=TRUE) {
-  x <- get_quantile_reliability(ts, tel, agg=agg)
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+plot_reliability <- function(ts, tel, ...) {
+  x <- get_quantile_reliability(ts, tel, ...)
 
   graphics::plot(x$quantiles, x$quantiles, type="l", lty=2, xlab="Nominal",
                  ylab="Observed", main="To do: add uncertainty bars")
@@ -288,9 +294,10 @@ plot_reliability <- function(ts, tel, agg=TRUE) {
 #' Evaluate forecast reliability by evaluating the actual hit rate of the quantile bins
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return list of the quantiles and their hit rates
-get_quantile_reliability <- function(ts, tel, agg=TRUE) {
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, agg=agg)
+get_quantile_reliability <- function(ts, tel, ...) {
+  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- x$fc
 
   # Get the list of quantiles that have been evaluated, and add top limit at 1
@@ -300,8 +307,7 @@ get_quantile_reliability <- function(ts, tel, agg=TRUE) {
   # Find time-points where telemetry and forecast data is available
   indices <- which(!is.nan(x$tel) & sun_up==TRUE)
   q_idx_subfunc <- function(i) {
-    if (agg) {j <- i} else {j <- floor((i-1)/x$tel_2_fc)+1}
-    list_idx <- which(ts$forecasts[[j]]$quantiles > x$tel[i]) # List of quantile indices above telemetry value
+    list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles > x$tel[i]) # List of quantile indices above telemetry value
     if (length(list_idx) > 0) {idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
     return(idx)
   }
