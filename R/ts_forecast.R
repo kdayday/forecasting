@@ -287,8 +287,10 @@ plot_reliability <- function(ts, tel, ...) {
   x <- get_quantile_reliability(ts, tel, ...)
 
   graphics::plot(x$quantiles, x$quantiles, type="l", lty=2, xlab="Nominal",
-                 ylab="Observed", main="To do: add uncertainty bars")
-  graphics::lines(x$quantiles, cumsum(x$hit_rate), type='b', lty=1, pch=1)
+                 ylab="Observed")
+  graphics::lines(x$quantiles[1:(length(x$quantiles)-1)], cumsum(x$hit_rate)[1:(length(x$quantiles)-1)], type='b', lty=1, pch=1)
+}
+
 }
 
 #' Evaluate forecast reliability by evaluating the actual hit rate of the quantile bins
