@@ -75,6 +75,10 @@ plot_pdf <- function(x, ...) {
   UseMethod("plot_pdf",x)
 }
 
+error_check_calc_quantiles_input <- function(quantiles){
+  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+}
+
 # Methods for aggregate probabilistic forecast class using vine copulas
 #------------------------------------------------------------------------------
 
@@ -175,7 +179,7 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
 calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.01, 0.99, by=0.01)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+  error_check_calc_quantiles_input(quantiles)
 
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
   quantiles <- stats::quantile(samples, probs=quantiles, type=1, names=TRUE)
@@ -378,7 +382,7 @@ is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
 calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+  error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
 
   names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
@@ -431,7 +435,7 @@ is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
 calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+  error_check_calc_quantiles_input(quantiles)
 
   model <- get_discrete_continuous_model(x)
 
@@ -538,7 +542,7 @@ is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A named numeric vector of estimated quantiles
 calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+  error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=quantiles)$y
 
   names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))

@@ -9,6 +9,13 @@ mock_samp <- function(x) "A sample"
 mock_pd <- function(x,y) "A pd"
 mock_eval <- function(x,y,z) list(cvar = list(low='low', high='high'), var=list(low=0, high=1))
 
+
+test_that("error_check_calc_quantiles_input throws errors", {
+  expect_error(error_check_calc_quantiles_input(quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
+  expect_error(error_check_calc_quantiles_input(quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
+  expect_error(error_check_calc_quantiles_input(quantiles=seq(0.25, 0.75, by=0.25)), NA)
+})
+
 test_that("Basic vine copula forecast initialization is correct.", {
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd,
             vinecop=function(x, ...) NA, calc_transforms=function(...) list('training'='tr', 'results'='res'),
@@ -107,11 +114,6 @@ test_that("Vine copula quantile calculation adjusts for inputs", {
   with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
             OUT <- calc_quantiles(fake_x, samples=rep(1, times=4), quantiles=seq(0.2, 0.8, by=0.2)))
   expect_equal(OUT, 4)
-})
-
-test_that("Vine copula quantile throws error", {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
 })
 
 test_that("Interval score calculation is correct.", {
@@ -219,11 +221,6 @@ test_that('1d rank forecast quantile calculation is correct', {
   expect_equal(names(OUT), c("25%", "50%", "75%"))
 })
 
-test_that('1d rank forecast quantile calculation throws errors', {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
-})
-
 test_that("1D KDE forecast initialization is correct.", {
   with_mock(probempirical=function(dat, anoption= 'b', ...) return(paste(anoption, 'model', sep=' ')),
             calc_quantiles=function(...) return(NA), qc_input=function(x) return(x),
@@ -270,10 +267,6 @@ test_that("1D BMA forecast discrete-continuous model normalization & summation i
   expect_equal(out$dbeta, xseq*mem_sum/mp)
 })
 
-test_that("BMA quantile throws error", {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_bma_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_bma_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
-})
 
 test_that("BMA quantile calculation handles infinities on boundaries", {
   # Unknown quantiles on the left are set to 0
