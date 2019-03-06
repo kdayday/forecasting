@@ -294,6 +294,37 @@ plot_reliability <- function(ts, tel, ...) {
   graphics::lines(x$quantiles[1:(length(x$quantiles)-1)], cumsum(x$hit_rate)[1:(length(x$quantiles)-1)], type='b', lty=1, pch=1)
 }
 
+
+#' Plot probability integral transform histogram
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+#' @param nbins To specify number of bars in the histogram
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+plot_PIT_histogram <- function(ts, tel, nbins=10, ...) {
+  x <- calc_PIT_histogram(ts, tel, nbins, ...)
+
+  ggplot2::ggplot(data.frame(x=x$bin_means, y=x$bin_hits/sum(x$bin_hits)), ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_col(width=x$bin_width) +
+    ggplot2::geom_line(data.frame(x=c(0, 1), y=c(1/nbins, 1/nbins)), mapping=ggplot2::aes(x=x, y=y), linetype="dashed") +
+    ggplot2::xlab("Probability Integral Transform") +
+    ggplot2::ylab("Relative Frequency")
+}
+
+#' Calculate data for probability integral transform histogram
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+#' @param nbins To specify number of bars in the histogram
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+#' @return List of the bin locations, their relative frequency, and the bin width
+calc_PIT_histogram <- function(ts, tel, nbins, ...) {
+  breaks <- seq(0, 1, length.out =(nbins+1))
+  bin_width <- diff(breaks)[1]
+  bin_means <- breaks[-1] - bin_width/2
+  qr <- get_quantile_reliability(ts, tel, ...)
+
+  # Bin as desired
+  bin_rate <- sapply(seq_len(length(breaks)-1), FUN = function(i) sum(qr$hits[qr$quantiles>breaks[i] & qr$quantiles<=breaks[i+1]]))
+  return(list(bin_means=bin_means, bin_hits=bin_rate, bin_width=bin_width))
 }
 
 #' Evaluate forecast reliability by evaluating the actual hit rate of the quantile bins
@@ -322,5 +353,5 @@ get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
   counts <- sapply(seq_along(quants), function(i) return(sum(q_indices == i)), USE.NAMES = FALSE)
 
   hit_rate <- counts/length(indices)
-  return(list(quantiles=quants, hit_rate=hit_rate))
+  return(list(quantiles=quants, hit_rate=hit_rate, hits=counts))
 }
