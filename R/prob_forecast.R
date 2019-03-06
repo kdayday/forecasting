@@ -16,11 +16,17 @@ length.prob_forecast <- function(x){
 #' @param actual The realized value
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
 IS <- function(x, actual, alpha) {
+  eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
-  l <- unname(x$quantiles[paste(alpha/2*100, '%', sep='')])
-  u <- unname(x$quantiles[paste((1-alpha/2)*100, '%', sep='')])
-  if (is.na(l) | is.na(u)) stop("Requested quantile is not in the forecast's list of quantiles.")
+  l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
+  u <- x$quantiles$x[abs(x$quantiles$q-(1-alpha/2))<eps]
+  if (length(l)==0 | length(u)==0) stop("Requested quantile is not in the forecast's list of quantiles.")
   is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
+}
+
+# trapezoidal area: (a+b)/2*width
+trapz <- function(width, height) {
+  sum(width*(height[-1] + height[1:length(height)-1])/2)
 }
 
 #' Estimate CRPS
@@ -28,16 +34,16 @@ IS <- function(x, actual, alpha) {
 #' @param x A prob_forecast object
 #' @param tel Value or vector of telemetry values
 #' @param quantiles (optional) A sequence of (0,1) values to estimate the cumulative distribution for the numerical evaluation of CRPS
-CRPS <- function(x, tel, quantiles=seq(0.01, 0.99, by=0.001)) {
-  if (any(quantiles <= 0 | quantiles >=1)) stop("Quantiles must be in (0,1).")
-  y <- calc_quantiles(x, quantiles=quantiles)
+CRPS <- function(x, tel) {
+  y <- x$quantiles$x
+
   # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation
-  crps <- pracma::trapz(y[y <= tel], (quantiles[y <= tel])^2) + pracma::trapz(y[y >= tel], (quantiles[y >= tel]-1)^2)
+  crps <- trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2)
 }
 
 #' Plot probabilistic forecast's quantiles
 plot.prob_forecast <- function(x) {
-  plot(x$quantiles, seq(0, 1, length.out = length(x$quantiles)), xlab='Power [MW]', ylab='Cumulative Density',
+  plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Density',
        main='Quantiles', sub = paste("Location: ", x$location, ", Time:", x$time))
 }
 
@@ -177,13 +183,14 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
 #' @param x prob_nd_vine_forecast object
 #' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with cVaR calculation
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.01, 0.99, by=0.01)) {
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
-  quantiles <- stats::quantile(samples, probs=quantiles, type=1, names=TRUE)
-  return(quantiles)
+  xseq <- stats::quantile(samples, probs=quantiles, type=1, names=TRUE)
+
+  return(list(x=xseq, q=quantiles))
 }
 
 #' Calculate VaR and CVaR from sampled data. CVaR calculation is done directly from the samples, rather than estimated from a fitted distribution.
@@ -380,13 +387,12 @@ is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
 #'
 #' @param x prob_1d_rank_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
 
-  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
-  return(xseq)
+  return(list(x=xseq, q=quantiles))
 }
 
 
@@ -433,8 +439,8 @@ is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
 #' Calculate forecast quantiles
 #' @param x prob_1d_bma_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
   model <- get_discrete_continuous_model(x)
@@ -447,8 +453,7 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.01, 0.99, by=
   # Overwrite based on discrete component
   xseq[quantiles >= 1-model$PoC] <- x$max_power
 
-  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
-  return(xseq)
+  return(list(x=xseq, q=quantiles))
 }
 
 #' @param x prob_1d_bma_forecast object
@@ -540,13 +545,12 @@ is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
 #'
 #' @param x prob_1d_kde_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.01, 0.99, by=0.01)) {
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=quantiles)$y
 
-  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
-  return(xseq)
+  return(list(x=xseq, q=quantiles))
 }
 
 #' Calculate VaR and CVaR by trapezoidal integration.

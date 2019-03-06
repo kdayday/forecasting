@@ -133,10 +133,9 @@ test_that("Calculation of number of time points without night-time and NaN's in 
   expect_equal(result$"Telemetry is NaN when sun forecasted down", 3)
 })
 
-x1 <- structure(list(quantiles=seq(10, 90, 10), n=2), class="prob_forecast")
-names(x1$quantiles) <-sapply(x1$quantiles, FUN=paste, '%', sep='')
-x2 <- structure(list(quantiles=seq(5, 45, 5), n=2), class="prob_forecast")
-names(x2$quantiles) <-sapply(x1$quantiles, FUN=paste, '%', sep='')
+quants <- seq(0.1, 0.9, by=0.1)
+x1 <- structure(list(quantiles=list(x=seq(10, 90, 10), q=quants), n=2), class="prob_forecast")
+x2 <- structure(list(quantiles=list(x=seq(5, 45, 5), q=quants), n=2), class="prob_forecast")
 ts <- structure(list(forecasts=list(x1, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
 
 test_that("Time series of values at certain quantile is extracted correctly.", {

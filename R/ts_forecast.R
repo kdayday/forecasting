@@ -99,12 +99,11 @@ length.ts_forecast <- function(x) {
 #' @param x A ts_forecast object
 #' @param tel vector of telemetry (optional)
 plot.ts_forecast <- function(x, ..., tel=NA) {
-  # Hard-coding this for now -- will need to change if other percentiles are desired
-  probs <- seq(from=0, to=1, length.out = length(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles))
+  probs <- x$forecasts[[min(which(sapply(x$forecasts, FUN=is.prob_forecast)))]]$quantiles$q
   plotdata <- matrix(ncol=length(x), nrow=length(probs))
   for (i in seq_along(x$forecasts)) {
     if (is.prob_forecast(x$forecasts[[i]])) {
-      plotdata[,i] <- unname(x$forecasts[[i]]$quantiles)
+      plotdata[,i] <- x$forecasts[[i]]$quantiles$x
     } else plotdata[,i] <- 0
   }
   graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Aggregate power [W]")
@@ -121,9 +120,13 @@ plot.ts_forecast <- function(x, ..., tel=NA) {
 #' @param alpha Quantile of interest, numeric [0, 100]
 #' @return Numeric vector
 get_quantile_time_series <- function(x, alpha) {
-  q <- paste(alpha, '%', sep='')
-  timeseries <- sapply(x$forecasts, FUN=function(forecast, q) {if (is.prob_forecast(forecast)){return(unname(forecast$quantiles[q]))} else return(0)}, q=q)
-  if (any(is.na(timeseries[x$sun_up]))) stop(paste(q,'quantile not available'))
+  eps <- 1e-6
+  q <- alpha/100
+  timeseries <- sapply(x$forecasts, FUN=function(forecast, q) {
+    if (is.prob_forecast(forecast)){v <- forecast$quantiles$x[which(abs(forecast$quantiles$q-q)<eps)]
+      if (length(v)==0) stop(paste(alpha,'quantile not available')) else return(v)}
+    else return(0)},
+    q=q)
   return(timeseries)
 }
 
@@ -297,19 +300,21 @@ plot_reliability <- function(ts, tel, ...) {
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param ... optional arguments to equalize_telemetry_forecast_length
+#' @param quantiles Provide a vector of bin breakpoints, or NA to use the given quantiles
 #' @return list of the quantiles and their hit rates
-get_quantile_reliability <- function(ts, tel, ...) {
+get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
   x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- x$fc
 
   # Get the list of quantiles that have been evaluated, and add top limit at 1
-  quants <- c(sapply(names(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles),
-         function(x) {as.numeric(gsub("%", "", x))/100}, USE.NAMES=FALSE), 1)
+  if (all(is.na(quants))) {
+    quants <- c(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles$q, 1)
+  }
 
   # Find time-points where telemetry and forecast data is available
   indices <- which(!is.nan(x$tel) & sun_up==TRUE)
   q_idx_subfunc <- function(i) {
-    list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles > x$tel[i]) # List of quantile indices above telemetry value
+    list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x > x$tel[i]) # List of quantile indices above telemetry value
     if (length(list_idx) > 0) {idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
     return(idx)
   }

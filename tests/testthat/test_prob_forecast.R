@@ -110,16 +110,14 @@ test_that("Vine copula quantile calculation adjusts for inputs", {
   fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
   with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
             OUT <- calc_quantiles(fake_x))
-  expect_equal(OUT, 10)
+  expect_equal(OUT$x, 10)
   with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
             OUT <- calc_quantiles(fake_x, samples=rep(1, times=4), quantiles=seq(0.2, 0.8, by=0.2)))
-  expect_equal(OUT, 4)
+  expect_equal(OUT$x, 4)
 })
 
 test_that("Interval score calculation is correct.", {
-  q <- seq(0, 100, 10)
-  names(q) <-sapply(q, FUN=paste, '%', sep='')
-  dat <- list(quantiles=q)
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
   expect_equal(IS(fake_forecast, actual=15, alpha=0.2), 80)
   expect_equal(IS(fake_forecast, actual=9, alpha=0.2), 80+2/0.2)
@@ -127,9 +125,7 @@ test_that("Interval score calculation is correct.", {
 })
 
 test_that("Interval score calculation throws error for bad input", {
-  q <- seq(0, 100, 10)
-  names(q) <-sapply(q, FUN=paste, '%', sep='')
-  dat <- list(quantiles=q)
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
   expect_error(IS(fake_forecast, actual=95, alpha=10), "Alpha.*")
   expect_error(IS(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
@@ -139,8 +135,7 @@ test_that("CRPS estimation is correct", {
   # Squared: 0.04, 0.16, | 0.36, 0.16
   # 0.04 + 0.5*0.12 = 0.1; 0.16 + 0.5*0.2 + 0.04 * 0.5*0.12= 0.26 + 0.1=0.36
   # 0.1 + 0.36 = 0.46
-  with_mock(calc_quantiles=function(...) {return(1:4)},
-            out <- CRPS(x=NA, tel=2, quantiles=seq(0.20, 0.8, length.out = 4)))
+  out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=2)
   expect_equal(out, 0.46)
 })
 
@@ -217,8 +212,8 @@ test_that("1d rank forecast initialization correctly handles NA's and multiple v
 test_that('1d rank forecast quantile calculation is correct', {
   fake_forecast <- structure(list(rank_quantiles=list(x=c(1, 6, 11), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
   OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, by=0.25))
-  expect_equal(unname(OUT), seq(1+2.5, 11-2.5, by=2.5))
-  expect_equal(names(OUT), c("25%", "50%", "75%"))
+  expect_equal(OUT$x, seq(1+2.5, 11-2.5, by=2.5))
+  expect_equal(OUT$q, c(0.25, 0.5, 0.75))
 })
 
 test_that("1D KDE forecast initialization is correct.", {
@@ -233,8 +228,8 @@ test_that("1D KDE forecast initialization is correct.", {
 test_that('1d kde forecast quantile calculation is correct', {
   fake_forecast <- structure(list(model=list(x=c(0, 5, 10), u=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_kde_forecast"))
   OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, length.out = 3))
-  expect_equal(unname(OUT), seq(2.5, 7.5, by=2.5))
-  expect_equal(names(OUT), c("25%", "50%", "75%"))
+  expect_equal(OUT$x, seq(2.5, 7.5, by=2.5))
+  expect_equal(OUT$q, seq(0.25, 0.75, length.out = 3))
 })
 
 test_that("1d KDE CVAR estimate is correct", {
@@ -274,13 +269,13 @@ test_that("BMA quantile calculation handles infinities on boundaries", {
   with_mock(get_discrete_continuous_model = function(x) return(x$model),
             cumtrapz = function(x, y) return(y),
             OUT <- calc_quantiles(fake_x, quantiles=c(0.2, 0.375)))
-  expect_equal(unname(OUT), c(0, 1.5))
+  expect_equal(OUT$x, c(0, 1.5))
 
   # Unknown quantiles on the rgight are set to rated power (in this case, the quantile at 0.8)
   fake_x <- structure(list(max_power=3, model=list(PoC=0.1, dbeta=c(seq(0, 0.75, by=0.25), Inf), xseq=seq(0, 4, by=1))), class = c("prob_forecast", "prob_1d_bma_forecast"))
   with_mock(get_discrete_continuous_model = function(x) return(x$model),
             cumtrapz = function(x, y) return(y),
             OUT <- calc_quantiles(fake_x, quantiles=c(0.125, 0.8, 0.9)))
-  expect_equal(unname(OUT), c(0.5, 3, 3))
+  expect_equal(OUT$x, c(0.5, 3, 3))
 })
 
