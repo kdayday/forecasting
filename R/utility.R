@@ -17,7 +17,7 @@ get_start_day <- function(date_data_start, date_start){
 
 #' Load data from a NETCDF file of ensemble forecasts
 #' Assumed file dimensions: Day x Hour x Site x Lead time x Ensemble member
-#' Returns an array of data: [site x member x time points]
+#' Returns an array of data: [site x member x day x hour]
 #' Site selection and member selection can all be vectors of non-consecutive values
 #' Time-point selection is a consecutive sequence
 #' @param fname file name
