@@ -4,8 +4,8 @@ library(forecasting)
 library(lubridate)
 
 mock_calc <- function(x, sun_up, start_time, time_step, scale, location, method, ...) "Calculated"
-fake_class <- function(x, location, time, ...) sum(x)
-fake_class2 <- function(x, location, time, ...) "A forecast"
+fake_class <- function(data.input, location, time, ...) sum(data.input)
+fake_class2 <- function(data.input, location, time, ...) "A forecast"
 start_time <- ymd(20161130)
 time_step <- 0.25
 x_site <- array(0:3, dim=c(2, 2))
@@ -27,6 +27,7 @@ test_that("ts_forecast initialization throws errors", {
   expect_error(ts_forecast(array(1:12, dim=c(2, 2, 3)), start_time, time_step, 'site', 'Odessa', 'vine'), "Data and scale mis-match*")
   expect_error(ts_forecast(array(1:12, dim=c(2, 6)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
   expect_error(ts_forecast(array(1:12, dim=c(12)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
+  expect_error(ts_forecast(x_multi, start_time, time_step, 'region', 'Odessa', 'vine', MoreTSArgs = list("time"=2)), "MoreTSArgs*")
   })
 
 test_that("ts_forecast calculation inserts NA's when sun is down", {
@@ -39,6 +40,7 @@ test_that("ts_forecast class lookup is correct", {
   expect_identical(get_forecast_class('S', 'kde')$class, prob_1d_kde_forecast)
   expect_identical(get_forecast_class('S', 'kde')$dim, '1')
   expect_identical(get_forecast_class('S', 'rank')$class, prob_1d_rank_forecast)
+  expect_identical(get_forecast_class('S', 'bma')$class, prob_1d_bma_forecast)
   expect_identical(get_forecast_class('r', 'vine')$class, prob_nd_vine_forecast)
   expect_identical(get_forecast_class('r', 'vine')$dim, 'n')
   expect_identical(get_forecast_class('Total', 'gaussian')$class, prob_nd_gaussian_forecast)
@@ -60,11 +62,20 @@ test_that("ts_forecast calculate list of forecasts", {
 test_that("ts_forecast calculate passes options through.", {
   opt1 <- "thing"
   opt2 <- 22
-  fake_class3 <- function(x, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}
+  fake_class3 <- function(data.input, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}
   with_mock(get_forecast_class=function(x,y) return(list(class=fake_class3, dim='n')),
             out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='rank', opt1=opt1, opt2=opt2))
   expect_equal(out[[1]]$thing1, opt1)
   expect_equal(out[[1]]$thing2, opt2)
+})
+
+test_that("ts_forecast calculate handles additional time-series arguments correctly ", {
+  fake_class3 <- function(data.input, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}
+  with_mock(get_forecast_class=function(x,y) return(list(class=fake_class3, dim='n')),
+            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='rank',
+                                  MoreTSArgs = list(opt1=3:5, opt2=7:9)))
+  expect_equal(out[[1]]$thing1, 3)
+  expect_equal(out[[2]]$thing2, 8)
 })
 
 # This is bad testing, but mainly to convince myself of the logic.

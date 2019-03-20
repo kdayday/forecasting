@@ -7,17 +7,19 @@
 #' @param scale One of 'site', 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
 #' @param ... optional arguments to the prob_forecast object
-ts_forecast <- function(x, start_time, time_step, scale, location, method, ...) {
+ts_forecast <- function(x, start_time, time_step, scale, location, method, MoreTSArgs=NA, ...) {
   # Check inputs
   if (!is.array(x)) stop("Bad input. x must be an array.")
   if (!((length(dim(x))==2 & tolower(scale) %in% c("site", "s")) | (length(dim(x))==3 & tolower(scale) %in% c("region", "total", "r", "t")))){
     stop("Data and scale mis-match. x must be a 2-dimensional array for 1-dimensional forecasts or a 3-dimensional array for n-dimensional forecasts.")
   }
+  if (any(names(MoreTSArgs) %in% c("location", "time"))) stop("MoreTSArgs may not include location or time, which are reserved names.")
 
   sun_up <- apply(x, MARGIN=1, FUN=check_sunup)
   forecasts <- calc_forecasts(x, sun_up, start_time=start_time, time_step=time_step, scale=scale, location=location,
-                              method=method, ...)
+                              method=method, MoreTSArgs=MoreTSArgs, ...)
 
   dat <- list(start_time = start_time,
               scale = scale,
@@ -47,18 +49,28 @@ check_sunup <- function(x){
 #' @param scale One of 'site', 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine'
+#' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
 #' @param ... optional arguments to the prob_forecast, including marginal estimator arguments
 #' @return A list of forecasts. Forecast is NA for times when sun is down.
-calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, ...) {
+calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, method, MoreTSArgs=NA, ...) {
   class_type <- get_forecast_class(scale, method)
-  sub_func <- function(i, time, sun_up, x, location, ...){
+  sub_func <- function(i, time, sun_up){
     if (sun_up) {
-      if (class_type$dim == '1') {
-        return(class_type$class(x[i,], location=location, time=time, ...))
-      } else {return(class_type$class(x[i,,], location=location, time=time, ...))}
+      # If additional time-series arguments are provided, this time points arguments are added to the list of optional arguments
+      if (class_type$dim == '1') { # Can't use ifelse function or it will just return the first value
+        args <- list(data.input=x[i,], location=location, time=time)
+      } else {
+        args <- list(data.input=x[i,,], location=location, time=time)
+      }
+
+      # Doing this manually to ensure list elements are coerced into a different type
+      for (name in names(list(...))) {args[[name]] <- list(...)[[name]]}
+      moreargs <- sapply(names(MoreTSArgs), FUN=function(name) return(name=MoreTSArgs[[name]][i]), simplify=F)
+      for (name in names(moreargs)) {args[[name]] <- moreargs[[name]]}
+
+      return(do.call(class_type$class, args))
     } else {return(NA)}}
-  return(mapply(sub_func, seq_len(dim(x)[1]), start_time + (seq_len(dim(x)[1])-1)*lubridate::dhours(time_step), sun_up,
-                MoreArgs=list(x=x, location=location, ...=...), SIMPLIFY=FALSE))
+  return(mapply(sub_func, seq_len(dim(x)[1]), start_time + (seq_len(dim(x)[1])-1)*lubridate::dhours(time_step), sun_up, SIMPLIFY=FALSE))
 }
 
 #' Look-up function of the forecast class type
@@ -73,6 +85,8 @@ get_forecast_class <- function(scale, method){
                   "r" = prob_1d_rank_forecast,
                   "kde" = prob_1d_kde_forecast,
                   "k" = prob_1d_kde_forecast,
+                  "bma" = prob_1d_bma_forecast,
+                  "b" = prob_1d_bma_forecast,
                   stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' ')))
     d <- '1'
   } else if (tolower(scale) %in% c("region", "total", "r", "t")){
