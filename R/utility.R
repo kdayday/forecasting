@@ -17,7 +17,7 @@ get_start_day <- function(date_data_start, date_start){
 
 #' Load data from a NETCDF file of ensemble forecasts
 #' Assumed file dimensions: Day x Hour x Site x Lead time x Ensemble member
-#' Returns an array of data: [site x member x day x hour]
+#' Returns an array of data: [site x member x time]
 #' Site selection and member selection can all be vectors of non-consecutive values
 #' Time-point selection is a consecutive sequence
 #' @param fname file name
@@ -63,14 +63,14 @@ get_netcdf_forecast_data <- function(fname, members, sites, lead_time, date_star
   # Close the file!
   nc_close(nc)
 
-  # Return in dimensions [site x member x day x hour]
-  return(aperm(data, c(4, 3, 1, 2)))
+  # Return in dimensions [site x member x time]
+  return(array(aperm(data, c(4, 3, 2, 1)), dim=c(length(sites), length(members), ndays*ts_per_day)))
 }
 
 
 #' Load data from a NETCDF file of telemetry
 #' Assumed file dimensions: Day x Hour x Site
-#' Returns an array of data: [site x day x hour]
+#' Returns an array of data: [site x time]
 #' Site selection can be vector of non-consecutive values
 #' Time-point selection is a consecutive sequence
 #' @param fname file name
@@ -98,5 +98,7 @@ get_netcdf_telemetry_data <- function(fname, sites, date_start, date_end,
   # Close the file!
   nc_close(nc)
 
-  return(aperm(data, c(3,1,2)))
+  # Return in dimensions [site x time]
+  return(array(aperm(data, c(3,2,1)), dim=c(length(sites), ndays*ts_per_day)))
+}
 }
