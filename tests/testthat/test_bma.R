@@ -106,6 +106,15 @@ test_that("get_lr clipping tolerance is correct", {
   expect_equal(OUT[,'y'], c(0, 1, 1))
 })
 
+test_that("get_lr handles complete separation", {
+  OUT <- get_lr(fc=c(0.2, 0.4, 0.6, NA, 0), tel=c(0, 0, NA, 0.1, 0.1), form=NA, A_transform=function(x) return(x), tol.clip=1e-2)
+  expect_equal(OUT$coefficients["x", "Estimate"], 0)
+
+  OUT <- get_lr(fc=c(0.2, 0.4, 0.6, NA, 0), tel=c(1, 0.999, NA, 0.9, 0.9), form=NA, A_transform=function(x) return(x), tol.clip=1e-2)
+  expect_equal(OUT$coefficients["(Intercept)", "Estimate"], 1)
+  expect_equal(OUT$coefficients["x", "Estimate"], 0)
+})
+
 test_that("get_lm handles transform", {
   with_mock(lm= function(form, data, ...) return(data),
             summary = function(x) return(x),

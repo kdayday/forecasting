@@ -50,7 +50,6 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
 # Do logistic regression to get a single ensemble member's 'a' coefficients
 # Telemetry within given tolerance of 1 are assumed to be clipped
 # glm and lm omit NA values by default
-# KEEP AN EYE ON SEPARATION PROBLEMS, AND JUST GET RID OF DISCRETE COMPONENT BASED ON ALL(CLIPPED==0, NA.RM=T) IF NEED BE.
 #' @param fc Vector of training forecast data on [0,1]
 #' @param tel Vector of telemetry data on [0,1]
 #' @param form Formula in terms of x,y for logistic regression model
@@ -60,7 +59,18 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
 get_lr <- function(fc, tel, form, A_transform, tol.clip){
   clipped <- as.integer(abs(tel-1) < tol.clip)
   if (typeof(A_transform)=="closure") fc <- sapply(fc, FUN = A_transform)
-  return(summary(glm(form, family=binomial(link='logit'), data=data.frame(x=fc, y=clipped))))
+  # Check for complete separation (i.e., there are no clipped data or all clipped data in the training set)
+  if (all(clipped[!is.na(tel) & !is.na(fc) & fc != 0]==0)) {
+    coefficients <- data.frame(a=c(0, 0), b=c("CS", "CS"), row.names=c("(Intercept)", "x"))
+    names(coefficients) <- c("Estimate", "Pr(>|z|)")
+    return(list(aic="CS", coefficients=coefficients))
+  } else if (all(clipped[!is.na(tel) & !is.na(fc) & fc != 0]==1)) {
+    coefficients <- data.frame(a=c(1, 0), b=c("CS", "CS"), row.names=c("(Intercept)", "x"))
+    names(coefficients) <- c("Estimate", "Pr(>|z|)")
+    return(list(aic="CS", coefficients=coefficients))
+  } else {
+    return(summary(glm(form, family=binomial(link='logit'), data=data.frame(x=fc, y=clipped))))
+  }
 }
 
 # Get the linear model for a single ensemble member's 'b' coefficients
