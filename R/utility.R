@@ -101,4 +101,3 @@ get_netcdf_telemetry_data <- function(fname, sites, date_start, date_end,
   # Return in dimensions [site x time]
   return(array(aperm(data, c(3,2,1)), dim=c(length(sites), ndays*ts_per_day)))
 }
-}
