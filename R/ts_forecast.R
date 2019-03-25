@@ -65,7 +65,7 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 
       # Doing this manually to ensure list elements are coerced into a different type
       for (name in names(list(...))) {args[[name]] <- list(...)[[name]]}
-      moreargs <- sapply(names(MoreTSArgs), FUN=function(name) return(name=MoreTSArgs[[name]][i]), simplify=F)
+      moreargs <- sapply(names(MoreTSArgs), FUN=function(name) return(name=MoreTSArgs[[name]][[i]]), simplify=F)
       for (name in names(moreargs)) {args[[name]] <- moreargs[[name]]}
 
       return(do.call(class_type$class, args))
