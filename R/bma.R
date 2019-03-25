@@ -260,6 +260,7 @@ get_gamma <- function(mu, C0) {
 #' @param rho rho = alpha/(alpha + beta)
 dbeta_gamma_rho <- function(x, g, rho) {
   if (all(is.na(x)) | is.na(g) | is.na(rho)) return(NA)
-  gamma(g)/(gamma(g*rho)*gamma(g*(1-rho)))*x^(g*rho-1)*(1-x)^((1-rho)*g-1)
+  # This is calculated using the log gamma function instead of the pure gamma, to avoid intermediate Inf values near the domain extremes.
+  exp(lgamma(g)-(lgamma(g*rho)+lgamma(g*(1-rho))))*x^(g*rho-1)*(1-x)^((1-rho)*g-1)
 }
 
