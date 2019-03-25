@@ -133,7 +133,7 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, tol.clip
   }
 
   lik <- get_log_lik(C0, w, OBS, FCST, B0, B1, PoC, B_transform, tol.clip)
-  return(list(loglik=lik, w=w, C0=C0, count=count, max_error=max(abs(error))))
+  return(list(log_lik=lik, w=w, C0=C0, count=count, max_error=max(abs(error))))
 }
 
 # ----------------------------------------------------------------------------------------
