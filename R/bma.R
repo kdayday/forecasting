@@ -61,13 +61,13 @@ get_lr <- function(fc, tel, form, A_transform, tol.clip){
   if (typeof(A_transform)=="closure") fc <- sapply(fc, FUN = A_transform)
   # Check for complete separation (i.e., there are no clipped data or all clipped data in the training set)
   if (all(clipped[!is.na(tel) & !is.na(fc) & fc != 0]==0)) {
-    coefficients <- data.frame(a=c(0, 0), b=c("CS", "CS"), row.names=c("(Intercept)", "x"))
+    coefficients <- data.frame(a=c(0, 0), b=c(NA, NA), row.names=c("(Intercept)", "x"))
     names(coefficients) <- c("Estimate", "Pr(>|z|)")
-    return(list(aic="CS", coefficients=coefficients))
+    return(list(aic=NA, coefficients=coefficients))
   } else if (all(clipped[!is.na(tel) & !is.na(fc) & fc != 0]==1)) {
-    coefficients <- data.frame(a=c(1, 0), b=c("CS", "CS"), row.names=c("(Intercept)", "x"))
+    coefficients <- data.frame(a=c(1, 0), b=c(NA, NA), row.names=c("(Intercept)", "x"))
     names(coefficients) <- c("Estimate", "Pr(>|z|)")
-    return(list(aic="CS", coefficients=coefficients))
+    return(list(aic=NA, coefficients=coefficients))
   } else {
     return(summary(glm(form, family=binomial(link='logit'), data=data.frame(x=fc, y=clipped))))
   }
