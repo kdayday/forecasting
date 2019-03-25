@@ -416,6 +416,8 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 #' @return A 1-dimensional probabilistic forecast object
 prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, ...) {
   members <- qc_input(data.input)
+  # Sanity check inputs; skip if model is missing
+  if (is.na(model)) return(NA)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
