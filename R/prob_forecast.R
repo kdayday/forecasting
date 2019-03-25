@@ -490,7 +490,7 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
   xrange <- 2:(length(model$xseq)-1)
   ymax <- ifelse(is.na(ymax), max(model$dbeta[xrange])+0.5, ymax)
 
-  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta[xrange]), mapping=aes(x=x, y=y)) +
+  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta[xrange]), mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line(size=2) +
     ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=2) +
     ggplot2::xlab("Power [MW]") +
@@ -502,7 +502,7 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
   }
 
   for (i in seq_len(dim(model$members$dbeta)[2])) {
-    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta[xrange,i]), mapping=aes(x=x, y=y), col="black")
+    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta[xrange,i]), mapping=ggplot2::aes(x=x, y=y), col="black")
   }
 
   plot(g)
