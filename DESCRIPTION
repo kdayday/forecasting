@@ -17,6 +17,7 @@ Imports:
     ggplot2,
     KernSmooth,
     ks,
+    logistf,
     lubridate,
     MASS,
     plotly,

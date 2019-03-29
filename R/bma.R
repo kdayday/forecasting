@@ -18,16 +18,16 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
   # 1. Logistic regression for a's
   # Returns a list of model summaries, one per member
   mem_discrete_models <-lapply(seq_len(dim(ens)[2]), function(i) get_lr(ens[,i], tel=tel, form=lr_formula, A_transform = A_transform, tol.clip=tol.clip))
-  A0 <- sapply(mem_discrete_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
-  A1 <- sapply(mem_discrete_models, function(m) return(m$coefficients["x", "Estimate"]))
+  A0 <- sapply(mem_discrete_models, function(m) return(unname(m$coefficients["(Intercept)"])))
+  A1 <- sapply(mem_discrete_models, function(m) return(unname(m$coefficients["x"])))
 
   # 2. linear regression for b's.
   mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel, form=lm_formula, B_transform = B_transform, tol.clip=tol.clip))
   B0 <- sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
   B1 <- sapply(mem_mean_models, function(m) return(m$coefficients["x", "Estimate"]))
 
-  fit_statistics <- data.frame("A0 p-value"=sapply(mem_discrete_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Pr(>|z|)"], NA))),
-                               "A1 p-value"=sapply(mem_discrete_models, function(m) return(m$coefficients["x", "Pr(>|z|)"])),
+  fit_statistics <- data.frame("A0 p-value"=sapply(mem_discrete_models, function(m) return(unname(m$prob["(Intercept)"]))),
+                               "A1 p-value"=sapply(mem_discrete_models, function(m) return(unname(m$prob["x"]))),
                                "A AIC"=sapply(mem_discrete_models, function(m) return(m$aic)),
                                "B0 p-value"=sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Pr(>|t|)"], NA))),
                                "B1 p-value"=sapply(mem_mean_models, function(m) return(m$coefficients["x", "Pr(>|t|)"])),
@@ -47,7 +47,8 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
 }
 
 
-# Do logistic regression to get a single ensemble member's 'a' coefficients
+# Do logistic regression to get a single ensemble member's 'a' coefficients.
+#' Uses a penalized/Firth linear regression to handle quasi- or complete separation
 # Telemetry within given tolerance of 1 are assumed to be clipped
 # glm and lm omit NA values by default
 #' @param fc Vector of training forecast data on [0,1]
@@ -62,18 +63,24 @@ get_lr <- function(fc, tel, form, A_transform, tol.clip){
   # Check for complete separation (i.e., there are no clipped data or all clipped data in the training set)
   if (all(clipped[!is.na(tel) & !is.na(fc) & fc != 0]==0)) {
     # If no data points in the training set are clipped, set logistic regression intercept to -Inf
-    coefficients <- data.frame(a=c(-Inf, 0), b=c(NA, NA), row.names=c("(Intercept)", "x"))
-    names(coefficients) <- c("Estimate", "Pr(>|z|)")
-    return(list(aic=NA, coefficients=coefficients))
+    coefficients <- c(-Inf, 0)
+    names(coefficients) <- c("(Intercept)", "x")
+    probs <- c(NA, NA)
+    names(probs) <- c("(Intercept)", "x")
+    return(list(aic=NA, coefficients=coefficients, prob=probs))
   } else if (all(clipped[!is.na(tel) & !is.na(fc) & fc != 0]==1)) {
     # If all data points in the training set are clipped, set logistic regression intercept to +Inf
-    coefficients <- data.frame(a=c(Inf, 0), b=c(NA, NA), row.names=c("(Intercept)", "x"))
-    names(coefficients) <- c("Estimate", "Pr(>|z|)")
-    return(list(aic=NA, coefficients=coefficients))
+    coefficients <- c(Inf, 0)
+    names(coefficients) <- c("(Intercept)", "x")
+    probs <- c(NA, NA)
+    names(probs) <- c("(Intercept)", "x")
+    return(list(aic=NA, coefficients=coefficients, prob=probs))
   } else {
-    return(summary(glm(form, family=binomial(link='logit'), data=data.frame(x=fc, y=clipped))))
+    fit <- logistf::logistf(form, data=data.frame(x=fc, y=clipped))
+    return(c(fit, aic=extractAIC(fit)[2]))
   }
 }
+
 
 # Get the linear model for a single ensemble member's 'b' coefficients
 # Telemetry within given tolerance of 1 are assumed to be clipped

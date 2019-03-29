@@ -1,6 +1,7 @@
 context("Test forecasting context")
 
 library(forecasting)
+library(logistf)
 
 test_that("Probability of clipping calculation is correct.", {
   expect_equal(get_poc(FCST=NA, A0=0.1, A1=1.2, A2=1), NA)
@@ -67,9 +68,11 @@ test_that("beta1_ens_modesl throws errors", {
 
 test_that("beta1_ens_modesl coefficient data look-up is correct", {
   fake_lr <- function(e, tel, ...) {
-    coeffs <- data.frame(Estimate=c(sum(e), sum(tel)), P=c(e[1],e[3]), row.names = c("(Intercept)", "x"))
-    names(coeffs) <- c("Estimate", "Pr(>|z|)") # Overwrite with special character names
-    return(list(coefficients=coeffs, aic=10))
+    coeffs <- c(sum(e), sum(tel))
+    names(coeffs) <- c("(Intercept)", "x")
+    probs <- c(e[1],e[3])
+    names(probs) <- c("(Intercept)", "x")
+    return(list(coefficients=coeffs, prob=probs, aic=10))
   }
   fake_lm <- function(e, tel, ...) {
     coeffs <- data.frame(Estimate=c(sum(e), sum(tel)), P=c(2,3), row.names = c("(Intercept)", "x"))
@@ -99,20 +102,21 @@ test_that("get_lm clipping tolerance is correct", {
 })
 
 test_that("get_lr clipping tolerance is correct", {
-  with_mock(glm= function(form, data, ...) return(data),
+  with_mock(logistf= function(form, data, ...) return(data),
+            extractAIC = function(...) return(NA),
             summary = function(x) return(x),
             OUT <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1.001, 0.999), form=NA, A_transform=function(x) return(x), tol.clip=1e-2)
   )
-  expect_equal(OUT[,'y'], c(0, 1, 1))
+  expect_equal(OUT[['y']], c(0, 1, 1))
 })
 
-test_that("get_lr handles complete separation", {
+test_that("get_lr handles complete single outcome value", {
   OUT <- get_lr(fc=c(0.2, 0.4, 0.6, NA, 0), tel=c(0, 0, NA, 0.1, 0.1), form=NA, A_transform=function(x) return(x), tol.clip=1e-2)
-  expect_equal(OUT$coefficients[, "Estimate"], c(-Inf, 0))
+  expect_equal(unname(OUT$coefficients), c(-Inf, 0))
   expect_true(is.na(OUT$aic))
 
   OUT <- get_lr(fc=c(0.2, 0.4, 0.6, NA, 0), tel=c(1, 0.999, NA, 0.9, 0.9), form=NA, A_transform=function(x) return(x), tol.clip=1e-2)
-  expect_equal(OUT$coefficients[, "Estimate"], c(+Inf, 0))
+  expect_equal(unname(OUT$coefficients), c(+Inf, 0))
 })
 
 test_that("get_lm handles transform", {
@@ -126,13 +130,14 @@ test_that("get_lm handles transform", {
 })
 
 test_that("get_lr handles transform", {
-  with_mock(glm= function(form, data, ...) return(data),
+  with_mock(logistf= function(form, data, ...) return(data),
+            extractAIC = function(...) return(NA),
             summary = function(x) return(x),
             OUT_transform <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1.001, 0.999), form=NA, A_transform=function(x) return(x+0.1), tol.clip=1e-2),
             OUT_no_transform <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1.001, 0.999), form=NA, A_transform=NA, tol.clip=1e-2)
   )
-  expect_equal(OUT_transform[,'x'], c(0.3, 0.5, 0.7))
-  expect_equal(OUT_no_transform[,'x'], c(0.2, 0.4, 0.6))
+  expect_equal(OUT_transform[['x']], c(0.3, 0.5, 0.7))
+  expect_equal(OUT_no_transform[['x']], c(0.2, 0.4, 0.6))
 })
 
 test_that("get_rho handles transforms correctly", {
