@@ -430,7 +430,9 @@ prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, .
   x <- structure(dat, class = c("prob_forecast", "prob_1d_bma_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  x$quantiles <- calc_quantiles(x)
+  dc_model <- get_discrete_continuous_model(x)
+  x$geometry_codes <- dc_model$geometries
+  x$quantiles <- calc_quantiles(x, model=dc_model)
   return(x)
 }
 
@@ -442,15 +444,12 @@ is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
 #' @param x prob_1d_bma_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
-  model <- get_discrete_continuous_model(x)
+  if (all(is.na(model))) model <- get_discrete_continuous_model(x)
 
-  xrange <- ifelse(is.infinite(model$dbeta[1]), 2, 1):ifelse(is.infinite(tail(model$dbeta,1)), length(model$dbeta)-1, length(model$dbeta))
-
-  u <- pracma::cumtrapz(model$xseq[xrange], model$dbeta[xrange])
-  xseq<- stats::approx(x=u, y=model$xseq[xrange], xout=quantiles, yleft=0, yright=x$max_power)$y
+  xseq<- stats::approx(x=model$pbeta, y=model$xseq, xout=quantiles, yleft=0)$y # yright=x$max_power
 
   # Overwrite based on discrete component
   xseq[quantiles >= 1-model$PoC] <- x$max_power
@@ -460,25 +459,59 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.001, 0.999, b
 
 #' @param x prob_1d_bma_forecast object
 #' @param xseq Vector of x values in [0,1] to evaluate
-#' @return A list of the discrete components (PoC) and continuous components () for each member
+#' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
 get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
-  # Normalize to [0,1]
-  members.norm <- sapply(x$members, function(m) ifelse(m <= x$max_power, m/x$max_power, 1))
 
-  # Get parameters for individual ensemble members
-  PoC <- mapply(get_poc, members.norm, x$model$A0, x$model$A1, x$model$A2, MoreArgs=list(A_transform=x$model$A_transform))
-  rhos <- mapply(get_rho, members.norm, x$model$B0, x$model$B1, MoreArgs = list(B_transform=x$model$B_transform))
-  gammas <- mapply(get_gamma, rhos, MoreArgs = list(C0=x$model$C0))
+  shape_params <- get_alpha_betas(x)
 
-  # Get sequence of beta probabilities, by ensemble member. Returns matrix of [xseq x members]
-  beta_seq <- mapply(function(g, r, poc, w, xseq) return((1-poc)*w*dbeta_gamma_rho(xseq, g, r)), gammas, rhos, PoC, x$model$w, MoreArgs = list(xseq=xseq))
+  # Get geometry codes
+  codes <- mapply(FUN=get_beta_distribution_geometry_code, shape_params$alphas, shape_params$betas)
+  geometries <- list("U type"=sum(codes==1), "Reverse J"=sum(codes==2), "J-type"=sum(codes==3), "Upside-down U"=sum(codes==4))
+
+  # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
+  dbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::dbeta(xseq, a, b)), shape_params$alphas, shape_params$betas,
+                     shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
+
+  # Get sequence of beta cumulative distribution, by ensemble member. Returns matrix of [xseq x members]
+  pbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::pbeta(xseq, a, b)), shape_params$alphas, shape_params$betas,
+                      shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
 
   # Calculate overall distribution
-  PoC_total <- sum(x$model$w*PoC)
-  beta_total <- apply(X=beta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  PoC_total <- sum(x$model$w*shape_params$PoC)
+  dbeta_total <- apply(X=dbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  pbeta_total <- apply(X=pbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
 
   # Invert normalization of beta components back to [0, max power]
-  return(list(PoC=PoC_total, dbeta=beta_total/x$max_power, xseq=xseq*x$max_power, members=list(PoC=PoC, dbeta=beta_seq/x$max_power)))
+  return(list(PoC=PoC_total, dbeta=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
+              members=list(PoC=shape_params$PoC, dbeta=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
+}
+
+get_alpha_betas <- function(x) {
+   # Normalize to [0,1]
+   members.norm <- sapply(x$members, function(m) ifelse(m <= x$max_power, m/x$max_power, 1))
+
+   # Get parameters for individual ensemble members
+   PoC <- mapply(get_poc, members.norm, x$model$A0, x$model$A1, x$model$A2, MoreArgs=list(A_transform=x$model$A_transform))
+   rhos <- mapply(get_rho, members.norm, x$model$B0, x$model$B1, MoreArgs = list(B_transform=x$model$B_transform))
+   gammas <- mapply(get_gamma, rhos, MoreArgs = list(C0=x$model$C0))
+
+   alphas <- rhos * gammas
+   betas <- gammas * (1-rhos)
+
+   return(list(alphas=alphas, betas=betas, PoC=PoC))
+ }
+
+# Broadest geometry categories. Most important is identifying and eliminating U-shaped.
+#' 1 -> U-type
+#' 2 -> Reverse J-type
+#' 3 -> J-type
+#' 4 -> Upside-down U type
+get_beta_distribution_geometry_code <- function(alpha, beta) {
+  if (alpha < 1 & beta < 1) {return(1)}
+  else if (alpha < 1 & beta >= 1) {return(2)}
+  else if (alpha >= 1 & beta < 1) {return(3)}
+  else if (alpha >= 1 & beta >= 1) {return(4)}
+  else stop(paste("uncoded combination: alpha=", alpha, ", beta=", beta, sep=''))
 }
 
 # Plot BMA probability density function, including the member component contributributions
