@@ -521,11 +521,13 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
 
   # Avoid Inf's on the boundaries
   xrange <- 2:(length(model$xseq)-1)
-  ymax <- ifelse(is.na(ymax), max(model$dbeta[xrange])+0.5, ymax)
+  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta[xrange]), model$PoC))*1.1, ymax)
 
   g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta[xrange]), mapping=ggplot2::aes(x=x, y=y)) +
-    ggplot2::geom_line(size=2) +
-    ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=2) +
+    ggplot2::geom_line(size=1.3) +
+    # Lollipop style segment for discrete component
+    ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=1.3) +
+    ggplot2::geom_point(data=data.frame(x=c(x$max_power), y=c(model$PoC)), size=4, col="black", fill="black", shape=21) +
     ggplot2::xlab("Power [MW]") +
     ggplot2::ylab("Probability") +
     ggplot2::geom_point(data=data.frame(x=x$members, y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
