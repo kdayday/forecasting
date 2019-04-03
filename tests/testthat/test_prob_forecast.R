@@ -240,6 +240,14 @@ test_that("1d KDE CVAR estimate is correct", {
   expect_equal(OUT, list(cvar=list(low=15, high=95), var=list(low=25, high=85)))
 })
 
+test_that("BMA QC re-weights model when members are missing", {
+  expect_error(qc_bma_input(c(1, NA) , NA), "Input data*")
+
+  OUT <- qc_bma_input(members=c(1, NA, 4, 5) , model=list(w=c(0.1, 0.2, 0.4, 0.3)))
+  expect_equal(OUT$w, c(0.1/0.8, 0, 0.5, 0.3/0.8))
+  expect_equal(sum(OUT$w), 1)
+})
+
 test_that("1D BMA forecast discrete-continuous model weighting & summation is correct", {
   PoC <- c(0, 0.1, 0.5)
   mem <- c(1, 5, 10)
@@ -260,7 +268,26 @@ test_that("1D BMA forecast discrete-continuous model weighting & summation is co
   mem_sum <- 0.1*1*0.5 + 0.5*0.9*0.1 + 1*0.5*0.4
   expect_equal(out$dbeta, xseq*mem_sum/mp)
   expect_equal(out$pbeta, xseq*mem_sum)
-  expect_equal(out$geometries, list("U type"=0, "Reverse J"=2, "J-type"=0, "Upside-down U"=1)) # 0.1, 1; 0.5, 5, 1, 10
+  expect_equal(out$geometries, list("U type"=0, "Reverse J"=2, "J-type"=0, "Upside-down U"=1, "Missing"=0)) # 0.1, 1; 0.5, 5, 1, 10
+})
+
+test_that("1D BMA forecast discrete-continuous model handles missing forecast members", {
+  PoC <- c(0, 0.1, NA)
+  mem <- c(1, 5, NA)
+  w <- c(0.5, 0.5, 0)
+  xseq <- seq(0.25, 0.75, by=0.25)
+  mp <- 10
+  fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA),
+                           max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
+
+  with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
+            dbeta = function(xseq, a, b) return(xseq*(a)),
+            pbeta = function(xseq, a, b) return(xseq*(a)),
+            out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
+  expect_equal(out$members$PoC, PoC)
+  expect_equal(out$PoC, 0.05)
+  expect_equal(out$members$dbeta, matrix(c(0.5*xseq*0.1*(1)/mp, 0.5*xseq*0.5*(1-0.1)/mp, NA*xseq), ncol=3))
+  expect_equal(out$geometries, list("U type"=0, "Reverse J"=2, "J-type"=0, "Upside-down U"=0, "Missing"=1)) # 0.1, 1; 0.5, 5; NA, NA
 })
 
 test_that("get_alpha_betas normalization and calculation is correct", {
@@ -299,6 +326,7 @@ test_that('1d bma forecast quantile calculation handles non-zero PoC', {
 })
 
 test_that("beta distribution geometry code lookup is correct", {
+  expect_equal(get_beta_distribution_geometry_code(0.5, NA), 0)
   expect_equal(get_beta_distribution_geometry_code(0.5, 0.5), 1)
   expect_equal(get_beta_distribution_geometry_code(0.5, 1), 2)
   expect_equal(get_beta_distribution_geometry_code(1, 0.5), 3)

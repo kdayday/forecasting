@@ -415,16 +415,18 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 #' @param ... Additional parameters
 #' @return A 1-dimensional probabilistic forecast object
 prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, ...) {
-  members <- qc_input(data.input)
   # Sanity check inputs; skip if model is missing
   if (all(is.na(model))) return(NA)
+
+  # Use specific quality control to handle missing members and adjust model weights accordingly
+  model <- qc_bma_input(data.input, model)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
               time = time,
               d = 1,
               model=model,
-              members=members,
+              members=data.input,
               max_power=max_power
   )
   x <- structure(dat, class = c("prob_forecast", "prob_1d_bma_forecast"))
@@ -439,6 +441,17 @@ prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, .
 #' Check class
 is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
 
+#' Specific quality control handling for BMA forecasts, for missing members that have already been trained in the model.
+#' Reallocates member weights if necessary
+qc_bma_input <- function(members, model) {
+  if (length(members[!is.na(members)]) < 2) stop("Input data must have at least 2 non-NA values.")
+
+  missing <- is.na(members)
+  missing_weight <- sum(model$w[missing], na.rm=T)
+  model$w[missing] <- 0
+  model$w <- model$w/sum(model$w, na.rm=T)
+  return(model)
+}
 
 #' Calculate forecast quantiles
 #' @param x prob_1d_bma_forecast object
@@ -466,7 +479,7 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
 
   # Get geometry codes
   codes <- mapply(FUN=get_beta_distribution_geometry_code, shape_params$alphas, shape_params$betas)
-  geometries <- list("U type"=sum(codes==1), "Reverse J"=sum(codes==2), "J-type"=sum(codes==3), "Upside-down U"=sum(codes==4))
+  geometries <- list("U type"=sum(codes==1), "Reverse J"=sum(codes==2), "J-type"=sum(codes==3), "Upside-down U"=sum(codes==4), "Missing"=sum(codes==0))
 
   # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
   dbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::dbeta(xseq, a, b)), shape_params$alphas, shape_params$betas,
@@ -477,7 +490,7 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
                       shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
 
   # Calculate overall distribution
-  PoC_total <- sum(x$model$w*shape_params$PoC)
+  PoC_total <- sum(x$model$w*shape_params$PoC, na.rm=T)
   dbeta_total <- apply(X=dbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
   pbeta_total <- apply(X=pbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
 
@@ -502,11 +515,13 @@ get_alpha_betas <- function(x) {
  }
 
 # Broadest geometry categories. Most important is identifying and eliminating U-shaped.
+#' 0 -> Missing
 #' 1 -> U-type
 #' 2 -> Reverse J-type
 #' 3 -> J-type
 #' 4 -> Upside-down U type
 get_beta_distribution_geometry_code <- function(alpha, beta) {
+  if (is.na(alpha) | is.na(beta)) {return(0)}
   if (alpha < 1 & beta < 1) {return(1)}
   else if (alpha < 1 & beta >= 1) {return(2)}
   else if (alpha >= 1 & beta < 1) {return(3)}
