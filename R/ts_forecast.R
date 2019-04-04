@@ -244,24 +244,25 @@ CRPS_avg <-function(ts, tel, ...){
 
 #' Get Brier score at a certain probability of exceedance
 #' This is calculated with a constant probability threshold, rather than a constant value threshold
-#' I THINK THIS NEEDS TO BE EXPLORED, BECAUSE I DON'T KNOW THE EFFECT OF THE CONSTANT PROBABILITY THRESHOLD.
 #'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
-#' @param alpha Threshold probability of exceedance, numeric [0,1]
+#' @param PoE Threshold probability of exceedance, numeric [0,1]
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the Brier score
-Brier <- function(ts, tel, alpha, ...) {
-  if (alpha < 0 | alpha > 1) stop(paste("alpha must be [0,1], given ", alpha, '.', sep=''))
-  thresholds <- get_quantile_time_series(ts, 100*(1-alpha))
+Brier <- function(ts, tel, PoE, ...) {
+  if (PoE < 0 | PoE > 1) stop(paste("Probability of exceedance must be [0,1], given ", PoE, '.', sep=''))
+  thresholds <- get_quantile_time_series(ts, 100*(1-PoE))
 
   thresholds <- equalize_telemetry_forecast_length(tel, thresholds, ...)$fc
   res <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- res$fc
   tel <- res$tel
 
+  # Find incidence of telemetry exceeding the threshold of exceedance
   indicator <- as.integer(tel[sun_up & !is.na(tel)] >= thresholds[sun_up & !is.na(tel)])
-  return(mean(((1-alpha)-indicator)^2, na.rm = TRUE))
+  # Compare Probability of exceedance to its actual incidence
+  return(mean((PoE-indicator)^2, na.rm = TRUE))
 }
 
 #' Get mean absolute error between the forecast median and the actual value
