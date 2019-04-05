@@ -337,6 +337,8 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
   bin_means <- breaks[-1] - bin_width/2
   qr <- get_quantile_reliability(ts, tel, ...)
 
+  browser()
+
   # Bin as desired
   bin_rate <- sapply(seq_len(length(breaks)-1), FUN = function(i) sum(qr$hits[qr$quantiles>breaks[i] & qr$quantiles<=breaks[i+1]]))
   return(list(bin_means=bin_means, bin_hits=bin_rate, bin_width=bin_width))
@@ -346,7 +348,7 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param ... optional arguments to equalize_telemetry_forecast_length
-#' @param quantiles Provide a vector of bin breakpoints, or NA to use the given quantiles
+#' @param quants Provide a vector of bin breakpoints, or NA to use the given quantiles
 #' @return list of the quantiles and their hit rates
 get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
   x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)

@@ -464,9 +464,6 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001
 
   xseq<- stats::approx(x=model$pbeta, y=model$xseq, xout=quantiles, yleft=0)$y # yright=x$max_power
 
-  # Overwrite based on discrete component
-  xseq[quantiles >= 1-model$PoC] <- x$max_power
-
   return(list(x=xseq, q=quantiles))
 }
 
@@ -474,6 +471,7 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001
 #' @param xseq Vector of x values in [0,1] to evaluate
 #' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
 get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
+  i.thresh <- max(which(xseq < x$model$percent_clipping_threshold))
 
   shape_params <- get_alpha_betas(x)
 
@@ -481,22 +479,37 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
   codes <- mapply(FUN=get_beta_distribution_geometry_code, shape_params$alphas, shape_params$betas)
   geometries <- list("U type"=sum(codes==1), "Reverse J"=sum(codes==2), "J-type"=sum(codes==3), "Upside-down U"=sum(codes==4), "Missing"=sum(codes==0))
 
-  # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
-  dbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::dbeta(xseq, a, b)), shape_params$alphas, shape_params$betas,
-                     shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
 
   # Get sequence of beta cumulative distribution, by ensemble member. Returns matrix of [xseq x members]
-  pbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::pbeta(xseq, a, b)), shape_params$alphas, shape_params$betas,
-                      shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
+  pbeta_seq <- mapply(pbeta_subfunction, shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w,
+                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh))
+
+  # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
+  dbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::dbeta(xseq, a, b)),
+                      shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
 
   # Calculate overall distribution
   PoC_total <- sum(x$model$w*shape_params$PoC, na.rm=T)
   dbeta_total <- apply(X=dbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
   pbeta_total <- apply(X=pbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  # Ensure pbeta sums to 1 after weighting and summing
+  if (max(pbeta_total) > 1) pbeta_total <- pbeta_total/max(pbeta_total)
 
   # Invert normalization of beta components back to [0, max power]
-  return(list(PoC=PoC_total, dbeta=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
-              members=list(PoC=shape_params$PoC, dbeta=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
+  return(list(PoC=PoC_total, dbeta_approx=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
+              members=list(PoC=shape_params$PoC, dbeta_approx=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
+}
+
+# Get *estimate* of beta probability density for illustrative purposes.
+# Does not account tweaks around the clipping threshold
+pbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh) {
+  pb <- stats::pbeta(xseq[1:i.thresh], a, b)
+  pb.continuous <- (1-poc)*pb/max(pb)
+  dx <- xseq[length(xseq)]-xseq[i.thresh]
+
+  # Model discrete component as a linear increase over the clipping bandwidth: y = mx + b, where b=1-poc, m=poc/clipping bandwidth
+  pb.discrete <- (1-poc) + seq_along(xseq[(i.thresh+1):length(xseq)])*diff(xseq)[1]*poc/dx
+  return(w * c(pb.continuous, pb.discrete))
 }
 
 get_alpha_betas <- function(x) {
@@ -529,16 +542,17 @@ get_beta_distribution_geometry_code <- function(alpha, beta) {
   else stop(paste("uncoded combination: alpha=", alpha, ", beta=", beta, sep=''))
 }
 
-# Plot BMA probability density function, including the member component contributributions
+# Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
+# Probability density has not been re-adjusted for the clipping threshold, which tweaks things around the clipping threshold
 plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
 
   model <- get_discrete_continuous_model(x)
 
   # Avoid Inf's on the boundaries
   xrange <- 2:(length(model$xseq)-1)
-  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta[xrange]), model$PoC))*1.1, ymax)
+  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta_approx[xrange]), model$PoC))*1.1, ymax)
 
-  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta[xrange]), mapping=ggplot2::aes(x=x, y=y)) +
+  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta_approx[xrange]), mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line(size=1.3) +
     # Lollipop style segment for discrete component
     ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=1.3) +
@@ -551,8 +565,8 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
     g <- g + ggplot2::geom_line(data=data.frame(x=c(actual, actual), y=c(0, ymax)), linetype="dashed")
   }
 
-  for (i in seq_len(dim(model$members$dbeta)[2])) {
-    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta[xrange,i]), mapping=ggplot2::aes(x=x, y=y), col="black")
+  for (i in seq_len(dim(model$members$dbeta_approx)[2])) {
+    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta_approx[xrange,i]), mapping=ggplot2::aes(x=x, y=y), col="black")
   }
 
   plot(g)
