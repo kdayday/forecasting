@@ -337,8 +337,6 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
   bin_means <- breaks[-1] - bin_width/2
   qr <- get_quantile_reliability(ts, tel, ...)
 
-  browser()
-
   # Bin as desired
   bin_rate <- sapply(seq_len(length(breaks)-1), FUN = function(i) sum(qr$hits[qr$quantiles>breaks[i] & qr$quantiles<=breaks[i+1]]))
   return(list(bin_means=bin_means, bin_hits=bin_rate, bin_width=bin_width))
