@@ -253,7 +253,8 @@ get_rho <- function(FCST, B0, B1, B_transform=NA) {
 #' @param mu beta mean value for this forecast (AKA rho)
 #' @param C0 height parameter of quadratic model of variance
 get_gamma <- function(mu, C0) {
-  if (is.na(mu)) {return(NA)}
+  # Return NA if mu is missing or on the boundary
+  if (is.na(mu) | mu==0) {return(NA)}
 
   # Estimate sigma (std deviation)
   sigma <- sqrt(-(C0/0.25)*(mu-0.5)^2 + C0)

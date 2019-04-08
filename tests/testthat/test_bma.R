@@ -165,8 +165,9 @@ test_that("get_gamma calculation is correct", {
 })
 
 
-test_that("get_gamma handles NA's", {
+test_that("get_gamma handles NA's and mean on boundary", {
   expect_true(is.na(get_gamma(mu=NA, C0=0.1)))
+  expect_true(is.na(get_gamma(mu=0, C0=0.1)))
 })
 
 test_that("dbeta_gamma_rho is correct", {
