@@ -16,11 +16,17 @@ length.prob_forecast <- function(x){
 #' @param actual The realized value
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
 IS <- function(x, actual, alpha) {
+  eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
-  l <- unname(x$quantiles[paste(alpha/2*100, '%', sep='')])
-  u <- unname(x$quantiles[paste((1-alpha/2)*100, '%', sep='')])
-  if (is.na(l) | is.na(u)) stop("Requested quantile is not in the forecast's list of quantiles.")
+  l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
+  u <- x$quantiles$x[abs(x$quantiles$q-(1-alpha/2))<eps]
+  if (length(l)==0 | length(u)==0) stop("Requested quantile is not in the forecast's list of quantiles.")
   is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
+}
+
+# trapezoidal area: (a+b)/2*width
+trapz <- function(width, height) {
+  sum(width*(height[-1] + height[1:length(height)-1])/2)
 }
 
 #' Estimate CRPS
@@ -28,16 +34,16 @@ IS <- function(x, actual, alpha) {
 #' @param x A prob_forecast object
 #' @param tel Value or vector of telemetry values
 #' @param quantiles (optional) A sequence of (0,1) values to estimate the cumulative distribution for the numerical evaluation of CRPS
-CRPS <- function(x, tel, quantiles=seq(0.01, 0.99, by=0.001)) {
-  if (any(quantiles <= 0 | quantiles >=1)) stop("Quantiles must be in (0,1).")
-  y <- calc_quantiles(x, quantiles=quantiles)
+CRPS <- function(x, tel) {
+  y <- x$quantiles$x
+
   # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation
-  crps <- pracma::trapz(y[y <= tel], (quantiles[y <= tel])^2) + pracma::trapz(y[y >= tel], (quantiles[y >= tel]-1)^2)
+  crps <- trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2)
 }
 
 #' Plot probabilistic forecast's quantiles
 plot.prob_forecast <- function(x) {
-  plot(x$quantiles, seq(0, 1, length.out = length(x$quantiles)), xlab='Power [MW]', ylab='Cumulative Density',
+  plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Density',
        main='Quantiles', sub = paste("Location: ", x$location, ", Time:", x$time))
 }
 
@@ -75,6 +81,10 @@ plot_pdf <- function(x, ...) {
   UseMethod("plot_pdf",x)
 }
 
+error_check_calc_quantiles_input <- function(quantiles){
+  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+}
+
 # Methods for aggregate probabilistic forecast class using vine copulas
 #------------------------------------------------------------------------------
 
@@ -82,7 +92,7 @@ plot_pdf <- function(x, ...) {
 #' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional vine copula.
 #' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
 #'
-#' @param data.train A matrix of training data [ntrain x nsites]
+#' @param data.input A matrix of training data [ntrain x nsites]
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param training_transform_type Transform of training data into uniform domain (see marg_transform "cdf.method")
@@ -90,17 +100,17 @@ plot_pdf <- function(x, ...) {
 #' @param n An integer, number of copula samples to take
 #' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_vine_forecast <- function(data.train, location, time,
+prob_nd_vine_forecast <- function(data.input, location, time,
                                   training_transform_type="empirical", results_transform_type='empirical', n=3000, ...) {
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
-  if (class(data.train)!='matrix') stop('Input data must be a matrix')
-  if (dim(data.train)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
+  if (class(data.input)!='matrix') stop('Input data must be a matrix')
+  if (dim(data.input)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
 
-  tr <- calc_transforms(data.train, training_transform_type, results_transform_type, ...)
+  tr <- calc_transforms(data.input, training_transform_type, results_transform_type, ...)
   training_transforms <- tr$training
   results_transforms <- tr$results
 
-  uniform_dat <- mapply(function(n, t) {to_uniform(t, data.train[,n])}, colnames(data.train, do.NULL=FALSE), training_transforms)
+  uniform_dat <- mapply(function(n, t) {to_uniform(t, data.input[,n])}, colnames(data.input, do.NULL=FALSE), training_transforms)
   model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
 
   # Initialize probabilistic forecast
@@ -109,7 +119,7 @@ prob_nd_vine_forecast <- function(data.train, location, time,
               location = location,
               time = time,
               model = model,
-              d = dim(data.train)[2],
+              d = dim(data.input)[2],
               n=n
               )
   x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
@@ -173,13 +183,14 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
 #' @param x prob_nd_vine_forecast object
 #' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with cVaR calculation
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.05, 0.95, by=0.05)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
+  error_check_calc_quantiles_input(quantiles)
 
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
-  quantiles <- stats::quantile(samples, probs=quantiles, type=1, names=TRUE)
-  return(quantiles)
+  xseq <- stats::quantile(samples, probs=quantiles, type=1, names=TRUE)
+
+  return(list(x=xseq, q=quantiles))
 }
 
 #' Calculate VaR and CVaR from sampled data. CVaR calculation is done directly from the samples, rather than estimated from a fitted distribution.
@@ -272,12 +283,12 @@ plot_pdf.prob_nd_vine_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95))
 #' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional Gaussian copula.
 #' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
 #'
-#' @param dat A matrix of training data, [ntrain x 1] for sites, [ntrain x nsites] for regional or total forecasts
+#' @param data.input A matrix of training data, [ntrain x 1] for sites, [ntrain x nsites] for regional or total forecasts
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param n An integer, number of copula samples to take
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_gaussian_forecast <- function(dat, location, time, n=3000, ...) {
+prob_nd_gaussian_forecast <- function(data.input, location, time, n=3000, ...) {
   stop('Not implemented')
 }
 
@@ -309,13 +320,13 @@ get_joint_density_grid.prob_nd_gaussian_forecast <- function(x, k=100) {
 #' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional empirical copula.
 #' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
 #'
-#' @param dat A matrix of training data, [ntrain x nsites]
+#' @param data.input A matrix of training data, [ntrain x nsites]
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param n An integer, number of copula samples to take
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_empirical_forecast <- function(dat, location, time, n=3000) {
-  if (dim(dat)[2] < 2) stop('Training data from more than 1 site required for empirical copula forecast.')
+prob_nd_empirical_forecast <- function(data.input, location, time, n=3000) {
+  if (dim(data.input)[2] < 2) stop('Training data from more than 1 site required for empirical copula forecast.')
   stop('Not implemented')
 }
 
@@ -350,12 +361,12 @@ qc_input <- function(dat) {
 #' Its rank quantiles are the basic quantiles estimated from the ensemble members; the quantiles are the rank quantiles iterpolated
 #' to the quantiles of interest (i.e., 10%, 20%, etc...)
 #'
-#' @param members A numeric vector of ensemble members
+#' @param data.input A numeric vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @return A 1-dimensional probabilistic forecast object
-prob_1d_rank_forecast <- function(members, location, time, ...) {
-  members <- qc_input(members)
+prob_1d_rank_forecast <- function(data.input, location, time, ...) {
+  members <- qc_input(data.input)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
@@ -376,13 +387,12 @@ is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
 #'
 #' @param x prob_1d_rank_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
+  error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
 
-  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
-  return(xseq)
+  return(list(x=xseq, q=quantiles))
 }
 
 
@@ -397,91 +407,156 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 
 #' Initialize a univariate probabilistic power forecast for a specific time point using Bayesian model averaging (BMA)
 #'
-#' @param members A vector of ensemble members
+#' @param data.input A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param model A pre-fit BMA model from beta1_ens_models
 #' @param max_power Maximum power for normalizing forecast to [0,1]
 #' @param ... Additional parameters
 #' @return A 1-dimensional probabilistic forecast object
-prob_1d_bma_forecast <- function(members, location, time, model, max_power, ...) {
-  members <- qc_input(members)
+prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, ...) {
+  # Sanity check inputs; skip if model is missing
+  if (all(is.na(model))) return(NA)
+
+  # Use specific quality control to handle missing members and adjust model weights accordingly
+  model <- qc_bma_input(data.input, model)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
               time = time,
               d = 1,
               model=model,
-              members=members,
+              members=data.input,
               max_power=max_power
   )
   x <- structure(dat, class = c("prob_forecast", "prob_1d_bma_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  x$quantiles <- calc_quantiles(x)
+  dc_model <- get_discrete_continuous_model(x)
+  x$geometry_codes <- dc_model$geometries
+  x$quantiles <- calc_quantiles(x, model=dc_model)
   return(x)
 }
 
 #' Check class
 is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
 
+#' Specific quality control handling for BMA forecasts, for missing members that have already been trained in the model.
+#' Reallocates member weights if necessary
+qc_bma_input <- function(members, model) {
+  if (length(members[!is.na(members)]) < 2) stop("Input data must have at least 2 non-NA values.")
+
+  missing <- is.na(members)
+  missing_weight <- sum(model$w[missing], na.rm=T)
+  model$w[missing] <- 0
+  model$w <- model$w/sum(model$w, na.rm=T)
+  return(model)
+}
 
 #' Calculate forecast quantiles
 #' @param x prob_1d_bma_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_bma_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
+  error_check_calc_quantiles_input(quantiles)
 
-  model <- get_discrete_continuous_model(x)
+  if (all(is.na(model))) model <- get_discrete_continuous_model(x)
 
-  xrange <- ifelse(is.infinite(model$dbeta[1]), 2, 1):ifelse(is.infinite(tail(model$dbeta,1)), length(model$dbeta)-1, length(model$dbeta))
+  xseq<- stats::approx(x=model$pbeta, y=model$xseq, xout=quantiles, yleft=0)$y # yright=x$max_power
 
-  u <- pracma::cumtrapz(model$xseq[xrange], model$dbeta[xrange])
-  xseq<- stats::approx(x=u, y=model$xseq[xrange], xout=quantiles, yleft=0, yright=x$max_power)$y
-
-  # Overwrite based on discrete component
-  xseq[quantiles >= 1-model$PoC] <- x$max_power
-
-  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
-  return(xseq)
+  return(list(x=xseq, q=quantiles))
 }
 
 #' @param x prob_1d_bma_forecast object
 #' @param xseq Vector of x values in [0,1] to evaluate
-#' @return A list of the discrete components (PoC) and continuous components () for each member
+#' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
 get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
-  # Normalize to [0,1]
-  members.norm <- sapply(x$members, function(m) ifelse(m <= x$max_power, m/x$max_power, 1))
+  i.thresh <- max(which(xseq < x$model$percent_clipping_threshold))
 
-  # Get parameters for individual ensemble members
-  PoC <- mapply(get_poc, members.norm, x$model$A0, x$model$A1, x$model$A2, MoreArgs=list(A_transform=x$model$A_transform))
-  rhos <- mapply(get_rho, members.norm, x$model$B0, x$model$B1, MoreArgs = list(B_transform=x$model$B_transform))
-  gammas <- mapply(get_gamma, rhos, MoreArgs = list(C0=x$model$C0))
+  shape_params <- get_alpha_betas(x)
 
-  # Get sequence of beta probabilities, by ensemble member. Returns matrix of [xseq x members]
-  beta_seq <- mapply(function(g, r, poc, w, xseq) return((1-poc)*w*dbeta_gamma_rho(xseq, g, r)), gammas, rhos, PoC, x$model$w, MoreArgs = list(xseq=xseq))
+  # Get geometry codes
+  codes <- mapply(FUN=get_beta_distribution_geometry_code, shape_params$alphas, shape_params$betas)
+  geometries <- list("U type"=sum(codes==1), "Reverse J"=sum(codes==2), "J-type"=sum(codes==3), "Upside-down U"=sum(codes==4), "Missing"=sum(codes==0))
+
+
+  # Get sequence of beta cumulative distribution, by ensemble member. Returns matrix of [xseq x members]
+  pbeta_seq <- mapply(pbeta_subfunction, shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w,
+                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh))
+
+  # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
+  dbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::dbeta(xseq, a, b)),
+                      shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
 
   # Calculate overall distribution
-  PoC_total <- sum(x$model$w*PoC)
-  beta_total <- apply(X=beta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  PoC_total <- sum(x$model$w*shape_params$PoC, na.rm=T)
+  dbeta_total <- apply(X=dbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  pbeta_total <- apply(X=pbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  # Ensure pbeta sums to 1 after weighting and summing
+  if (max(pbeta_total) > 1) pbeta_total <- pbeta_total/max(pbeta_total)
 
   # Invert normalization of beta components back to [0, max power]
-  return(list(PoC=PoC_total, dbeta=beta_total/x$max_power, xseq=xseq*x$max_power, members=list(PoC=PoC, dbeta=beta_seq/x$max_power)))
+  return(list(PoC=PoC_total, dbeta_approx=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
+              members=list(PoC=shape_params$PoC, dbeta_approx=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
 }
 
-# Plot BMA probability density function, including the member component contributributions
+# Get *estimate* of beta probability density for illustrative purposes.
+# Does not account tweaks around the clipping threshold
+pbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh) {
+  pb <- stats::pbeta(xseq[1:i.thresh], a, b)
+  pb.continuous <- (1-poc)*pb/max(pb)
+  dx <- xseq[length(xseq)]-xseq[i.thresh]
+
+  # Model discrete component as a linear increase over the clipping bandwidth: y = mx + b, where b=1-poc, m=poc/clipping bandwidth
+  pb.discrete <- (1-poc) + seq_along(xseq[(i.thresh+1):length(xseq)])*diff(xseq)[1]*poc/dx
+  return(w * c(pb.continuous, pb.discrete))
+}
+
+get_alpha_betas <- function(x) {
+   # Normalize to [0,1]
+   members.norm <- sapply(x$members, function(m) ifelse(m <= x$max_power, m/x$max_power, 1))
+
+   # Get parameters for individual ensemble members
+   PoC <- mapply(get_poc, members.norm, x$model$A0, x$model$A1, x$model$A2, MoreArgs=list(A_transform=x$model$A_transform))
+   rhos <- mapply(get_rho, members.norm, x$model$B0, x$model$B1, MoreArgs = list(B_transform=x$model$B_transform))
+   gammas <- mapply(get_gamma, rhos, MoreArgs = list(C0=x$model$C0))
+
+   alphas <- rhos * gammas
+   betas <- gammas * (1-rhos)
+
+   return(list(alphas=alphas, betas=betas, PoC=PoC))
+ }
+
+# Broadest geometry categories. Most important is identifying and eliminating U-shaped.
+#' 0 -> Missing
+#' 1 -> U-type
+#' 2 -> Reverse J-type
+#' 3 -> J-type
+#' 4 -> Upside-down U type
+get_beta_distribution_geometry_code <- function(alpha, beta) {
+  if (is.na(alpha) | is.na(beta)) {return(0)}
+  if (alpha < 1 & beta < 1) {return(1)}
+  else if (alpha < 1 & beta >= 1) {return(2)}
+  else if (alpha >= 1 & beta < 1) {return(3)}
+  else if (alpha >= 1 & beta >= 1) {return(4)}
+  else stop(paste("uncoded combination: alpha=", alpha, ", beta=", beta, sep=''))
+}
+
+# Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
+# Probability density has not been re-adjusted for the clipping threshold, which tweaks things around the clipping threshold
 plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
 
   model <- get_discrete_continuous_model(x)
 
   # Avoid Inf's on the boundaries
   xrange <- 2:(length(model$xseq)-1)
-  ymax <- ifelse(is.na(ymax), max(model$dbeta[xrange])+0.5, ymax)
+  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta_approx[xrange]), model$PoC))*1.1, ymax)
 
-  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta[xrange]), mapping=aes(x=x, y=y)) +
-    ggplot2::geom_line(size=2) +
-    ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=2) +
+  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta_approx[xrange]), mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_line(size=1.3) +
+    # Lollipop style segment for discrete component
+    ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=1.3) +
+    ggplot2::geom_point(data=data.frame(x=c(x$max_power), y=c(model$PoC)), size=4, col="black", fill="black", shape=21) +
     ggplot2::xlab("Power [MW]") +
     ggplot2::ylab("Probability") +
     ggplot2::geom_point(data=data.frame(x=x$members, y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
@@ -490,8 +565,8 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
     g <- g + ggplot2::geom_line(data=data.frame(x=c(actual, actual), y=c(0, ymax)), linetype="dashed")
   }
 
-  for (i in seq_len(dim(model$members$dbeta)[2])) {
-    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta[xrange,i]), mapping=aes(x=x, y=y), col="black")
+  for (i in seq_len(dim(model$members$dbeta_approx)[2])) {
+    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta_approx[xrange,i]), mapping=ggplot2::aes(x=x, y=y), col="black")
   }
 
   plot(g)
@@ -503,14 +578,14 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
 
 #' Initialize a univariate probabilistic power forecast for a specific time point using kernel density estimation. See kde_methods.R for more details
 #'
-#' @param members A vector of ensemble members
+#' @param data.input A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param cdf.method KDE method selection, see kde_methods.R for details
 #' @param ... Additional parameters passed on the KDE method
 #' @return A 1-dimensional probabilistic forecast object
-prob_1d_kde_forecast <- function(members, location, time, cdf.method='geenens', ...) {
-  members <- qc_input(members)
+prob_1d_kde_forecast <- function(data.input, location, time, cdf.method='geenens', ...) {
+  members <- qc_input(data.input)
 
   func <- kde_lookup(cdf.method)
   # Get selected KDE
@@ -536,13 +611,12 @@ is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
 #'
 #' @param x prob_1d_kde_forecast object
 #' @param quantiles Sequence of quantiles in (0,1)
-#' @return A named numeric vector of estimated quantiles
-calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.05, 0.95, by=0.05)) {
-  if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
+  error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=quantiles)$y
 
-  names(xseq) <- sapply(quantiles, FUN=function(y) return(paste(y*100, "%", sep='')))
-  return(xseq)
+  return(list(x=xseq, q=quantiles))
 }
 
 #' Calculate VaR and CVaR by trapezoidal integration.

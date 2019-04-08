@@ -1,6 +1,7 @@
 context("Test forecasting context")
 
 library(forecasting)
+library(logistf)
 
 test_that("Probability of clipping calculation is correct.", {
   expect_equal(get_poc(FCST=NA, A0=0.1, A1=1.2, A2=1), NA)
@@ -8,18 +9,18 @@ test_that("Probability of clipping calculation is correct.", {
   expect_equal(get_poc(FCST=1, A0=0.1, A1=1.2, A2=1), 1/(1+exp(-2.3))) # 0.1+1.2*1+1
 })
 
-test_that("get_z is correct, including clipping tolerance", {
-  expect_equal(get_z(OBS=1-1e-7, PoC=0.4, db=0.01, w=0.5, tol.clip=1e-6), 0.2) # 0.5 * 0.4 = 0.2
-  expect_equal(get_z(OBS=1-1e-5, PoC=0.4, db=0.01, w=0.5, tol.clip=1e-6), 0.003) # 0.5 * 0.6 * 0.01 =0.003
+test_that("get_z is correct, including clipping threshold", {
+  expect_equal(get_z(OBS=0.99, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99), 0.2) # 0.5 * 0.4 = 0.2
+  expect_equal(get_z(OBS=0.989, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99), 0.003) # 0.5 * 0.6 * 0.01 =0.003
 })
 
 test_that("get_z handles missing members", {
-  expect_true(is.na(get_z(OBS=NA, PoC=0.4, db=0.01, w=0.5, tol.clip=1e-6)))
-  expect_true(is.na(get_z(OBS=0.8, PoC=NA, db=0.01, w=0.5, tol.clip=1e-6)))
+  expect_true(is.na(get_z(OBS=NA, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99)))
+  expect_true(is.na(get_z(OBS=0.8, PoC=NA, db=0.01, w=0.5, percent_clipping_threshold=0.99)))
 })
 
 test_that("get_z returns missing for observataions at 0", {
-  expect_true(is.na(get_z(OBS=0, PoC=0.4, db=0.01, w=0.5, tol.clip=1e-6)))
+  expect_true(is.na(get_z(OBS=0, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99)))
 })
 
 test_that("e_step array handling is correct.", {
@@ -34,8 +35,8 @@ test_that("e_step array handling is correct.", {
   with_mock(get_rho= function(FCST, B0, B1, ...) return(sum(FCST, B0, B1)),
             get_gamma = function(rho, C0) return(sum(rho, C0)), # 3:2:17
             dbeta_gamma_rho = function(OBS, gammas, rhos) return(sum(OBS, gammas, rhos)), # 6, 11, 16, 21, 22, 27, 32, 37
-            get_z= function(OBS, PoC, db, w, tol.clip) return(db-PoC+OBS+w), #  c(4, 7, 10, 13, 8, 11, 14, 17 ) -> c(14, 17, 20, 23, 28, 31, 34, 37)
-            OUT <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform=NA, tol.clip=NA))
+            get_z= function(OBS, PoC, db, w, percent_clipping_threshold) return(db-PoC+OBS+w), #  c(4, 7, 10, 13, 8, 11, 14, 17 ) -> c(14, 17, 20, 23, 28, 31, 34, 37)
+            OUT <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform=NA, percent_clipping_threshold=NA))
   expect_equal(OUT$z, array(c(14/42, 17/48, 20/54, 23/60, 28/42, 31/48, 34/54, 37/60), dim=c(2,2,2)))
   expect_equal(OUT$sumz, matrix(c(42, 48, 54, 60), ncol=2))
 })
@@ -45,7 +46,7 @@ test_that("e_step sumz handles NaN's.", {
   with_mock(get_rho= function(...) return(NA), get_gamma = function(...) return(NA),
             dbeta_gamma_rho = function(...) return(NA),
             get_z= function(x, ...) return(x),
-            OUT <- e_step(w=NA, C0=NA, OBS=OBS, FCST=OBS, B0=NA, B1=NA, PoC=NA, B_transform=NA, tol.clip=NA))
+            OUT <- e_step(w=NA, C0=NA, OBS=OBS, FCST=OBS, B0=NA, B1=NA, PoC=NA, B_transform=NA, percent_clipping_threshold=NA))
   expect_equal(OUT$z, array(c(NA, 1, 1/3, NA, NA, 2/3), dim=c(3, 1, 2)))
   expect_equal(OUT$sumz, matrix(c(NA, 1, 3), ncol=1))
 })
@@ -53,23 +54,28 @@ test_that("e_step sumz handles NaN's.", {
 test_that("em_subfunction is correct.", {
   with_mock(e_step=function(...) {return(list(z=(array(c(0.1, 0.2, 0.3, NA, seq(0.2, 0.8, by = 0.2), rep(NA, 4)), dim=c(2, 2, 3)))))},
             optimize=function(...) {return(list(maximum=2))},
-            OUT <- em_subfunction(FCST=array(1:12, dim = c(2,2,3)), OBS=NA, PoC=NA, B0=NA, B1=NA, C0=4, w=c(1, 0.7, 0), tol.clip=NA, count=1, CM2.iter=1))
+            OUT <- em_subfunction(FCST=array(1:12, dim = c(2,2,3)), OBS=NA, PoC=NA, B0=NA, B1=NA, C0=4, w=c(1, 0.7, 0),
+                                  percent_clipping_threshol=NA, count=1, CM2.iter=1))
   expect_equal(OUT$w, c(0.2, 0.5, 0))
   expect_equal(OUT$C0, 2)
   expect_equal(abs(OUT$error), c(0.8, 0.2, 0, 2))
 })
 
 test_that("beta1_ens_modesl throws errors", {
-  expect_error(beta1_ens_models(tel=c(1, 2, NA), ens=matrix((1:9)/9, ncol=3)), "Telemetry*")
+  expect_error(beta1_ens_models(tel=c(1, 1.01, NA), ens=matrix((1:9)/9, ncol=3)), "Telemetry*")
   expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9), ncol=3)), "All forecasts*")
   expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=1)), "Must*")
+  expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=0.9), "Percent*")
+  expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=1.1), "Percent*")
 })
 
 test_that("beta1_ens_modesl coefficient data look-up is correct", {
   fake_lr <- function(e, tel, ...) {
-    coeffs <- data.frame(Estimate=c(sum(e), sum(tel)), P=c(e[1],e[3]), row.names = c("(Intercept)", "x"))
-    names(coeffs) <- c("Estimate", "Pr(>|z|)") # Overwrite with special character names
-    return(list(coefficients=coeffs, aic=10))
+    coeffs <- c(sum(e), sum(tel))
+    names(coeffs) <- c("(Intercept)", "x")
+    probs <- c(e[1],e[3])
+    names(probs) <- c("(Intercept)", "x")
+    return(list(coefficients=coeffs, prob=probs, aic=10))
   }
   fake_lm <- function(e, tel, ...) {
     coeffs <- data.frame(Estimate=c(sum(e), sum(tel)), P=c(2,3), row.names = c("(Intercept)", "x"))
@@ -90,40 +96,51 @@ test_that("beta1_ens_modesl coefficient data look-up is correct", {
                                               "B r-squared"=c(0.5, 0.5, 0.5)))
 })
 
-test_that("get_lm clipping tolerance is correct", {
+test_that("get_lm clipping threshold is correct", {
   with_mock(lm= function(form, data, ...) return(data),
             summary = function(x) return(x),
-    OUT <- get_lm(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1.001, 0.999), form=NA, B_transform=function(x) return(x), tol.clip=1e-2)
+    OUT <- get_lm(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1, 0.99), form=NA, B_transform=function(x) return(x), percent_clipping_threshold=0.99)
   )
   expect_equal(dim(OUT), c(1,2))
 })
 
-test_that("get_lr clipping tolerance is correct", {
-  with_mock(glm= function(form, data, ...) return(data),
+test_that("get_lr clipping threshold is correct", {
+  with_mock(logistf= function(form, data, ...) return(data),
+            extractAIC = function(...) return(NA),
             summary = function(x) return(x),
-            OUT <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1.001, 0.999), form=NA, A_transform=function(x) return(x), tol.clip=1e-2)
+            OUT <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1, 0.99), form=NA, A_transform=function(x) return(x), percent_clipping_threshold=0.99)
   )
-  expect_equal(OUT[,'y'], c(0, 1, 1))
+  expect_equal(OUT[['y']], c(0, 1, 1))
+})
+
+test_that("get_lr handles complete single outcome value", {
+  OUT <- get_lr(fc=c(0.2, 0.4, 0.6, NA, 0), tel=c(0, 0, NA, 0.1, 0.1), form=NA, A_transform=function(x) return(x), percent_clipping_threshold=0.99)
+  expect_equal(unname(OUT$coefficients), c(-Inf, 0))
+  expect_true(is.na(OUT$aic))
+
+  OUT <- get_lr(fc=c(0.2, 0.4, 0.6, NA, 0), tel=c(1, 0.999, NA, 0.9, 0.9), form=NA, A_transform=function(x) return(x), percent_clipping_threshold=0.99)
+  expect_equal(unname(OUT$coefficients), c(+Inf, 0))
 })
 
 test_that("get_lm handles transform", {
   with_mock(lm= function(form, data, ...) return(data),
             summary = function(x) return(x),
-            OUT_transform <- get_lm(fc=c(0.2), tel=c(0.5), form=NA, B_transform=function(x) return(x+0.1), tol.clip=1e-2),
-            OUT_no_transform <- get_lm(fc=c(0.2), tel=c(0.5), form=NA, B_transform=NA, tol.clip=1e-2)
+            OUT_transform <- get_lm(fc=c(0.2), tel=c(0.5), form=NA, B_transform=function(x) return(x+0.1), percent_clipping_threshold=0.99),
+            OUT_no_transform <- get_lm(fc=c(0.2), tel=c(0.5), form=NA, B_transform=NA, percent_clipping_threshold=0.99)
   )
   expect_equal(OUT_transform[,'x'], c(0.3))
   expect_equal(OUT_no_transform[,'x'], c(0.2))
 })
 
 test_that("get_lr handles transform", {
-  with_mock(glm= function(form, data, ...) return(data),
+  with_mock(logistf= function(form, data, ...) return(data),
+            extractAIC = function(...) return(NA),
             summary = function(x) return(x),
-            OUT_transform <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1.001, 0.999), form=NA, A_transform=function(x) return(x+0.1), tol.clip=1e-2),
-            OUT_no_transform <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1.001, 0.999), form=NA, A_transform=NA, tol.clip=1e-2)
+            OUT_transform <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1, 0.99), form=NA, A_transform=function(x) return(x+0.1), percent_clipping_threshold=0.99),
+            OUT_no_transform <- get_lr(fc=c(0.2, 0.4, 0.6), tel=c(0.5, 1, 0.99), form=NA, A_transform=NA, percent_clipping_threshold=0.99)
   )
-  expect_equal(OUT_transform[,'x'], c(0.3, 0.5, 0.7))
-  expect_equal(OUT_no_transform[,'x'], c(0.2, 0.4, 0.6))
+  expect_equal(OUT_transform[['x']], c(0.3, 0.5, 0.7))
+  expect_equal(OUT_no_transform[['x']], c(0.2, 0.4, 0.6))
 })
 
 test_that("get_rho handles transforms correctly", {
@@ -148,8 +165,9 @@ test_that("get_gamma calculation is correct", {
 })
 
 
-test_that("get_gamma handles NA's", {
+test_that("get_gamma handles NA's and mean on boundary", {
   expect_true(is.na(get_gamma(mu=NA, C0=0.1)))
+  expect_true(is.na(get_gamma(mu=0, C0=0.1)))
 })
 
 test_that("dbeta_gamma_rho is correct", {
@@ -163,6 +181,6 @@ test_that("dbeta_gamma_rho handles NA's", {
 
 test_that("get_log_lik is correct",{
   with_mock(e_step=function(...) return(list(sumz=c(NA, exp(2), exp(5)))),
-            expect_equal(get_log_lik(C0=NA, w=NA, OBS=NA, FCST=NA, B0=NA, B1=NA, PoC=NA, B_transform=NA, tol.clip=NA), 7)
+            expect_equal(get_log_lik(C0=NA, w=NA, OBS=NA, FCST=NA, B0=NA, B1=NA, PoC=NA, B_transform=NA, percent_clipping_threshold=NA), 7)
   )
 })

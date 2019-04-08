@@ -9,6 +9,13 @@ mock_samp <- function(x) "A sample"
 mock_pd <- function(x,y) "A pd"
 mock_eval <- function(x,y,z) list(cvar = list(low='low', high='high'), var=list(low=0, high=1))
 
+
+test_that("error_check_calc_quantiles_input throws errors", {
+  expect_error(error_check_calc_quantiles_input(quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
+  expect_error(error_check_calc_quantiles_input(quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
+  expect_error(error_check_calc_quantiles_input(quantiles=seq(0.25, 0.75, by=0.25)), NA)
+})
+
 test_that("Basic vine copula forecast initialization is correct.", {
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd,
             vinecop=function(x, ...) NA, calc_transforms=function(...) list('training'='tr', 'results'='res'),
@@ -103,21 +110,14 @@ test_that("Vine copula quantile calculation adjusts for inputs", {
   fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
   with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
             OUT <- calc_quantiles(fake_x))
-  expect_equal(OUT, 10)
+  expect_equal(OUT$x, 10)
   with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
             OUT <- calc_quantiles(fake_x, samples=rep(1, times=4), quantiles=seq(0.2, 0.8, by=0.2)))
-  expect_equal(OUT, 4)
-})
-
-test_that("Vine copula quantile throws error", {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
+  expect_equal(OUT$x, 4)
 })
 
 test_that("Interval score calculation is correct.", {
-  q <- seq(0, 100, 10)
-  names(q) <-sapply(q, FUN=paste, '%', sep='')
-  dat <- list(quantiles=q)
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
   expect_equal(IS(fake_forecast, actual=15, alpha=0.2), 80)
   expect_equal(IS(fake_forecast, actual=9, alpha=0.2), 80+2/0.2)
@@ -125,9 +125,7 @@ test_that("Interval score calculation is correct.", {
 })
 
 test_that("Interval score calculation throws error for bad input", {
-  q <- seq(0, 100, 10)
-  names(q) <-sapply(q, FUN=paste, '%', sep='')
-  dat <- list(quantiles=q)
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
   expect_error(IS(fake_forecast, actual=95, alpha=10), "Alpha.*")
   expect_error(IS(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
@@ -137,8 +135,7 @@ test_that("CRPS estimation is correct", {
   # Squared: 0.04, 0.16, | 0.36, 0.16
   # 0.04 + 0.5*0.12 = 0.1; 0.16 + 0.5*0.2 + 0.04 * 0.5*0.12= 0.26 + 0.1=0.36
   # 0.1 + 0.36 = 0.46
-  with_mock(calc_quantiles=function(...) {return(1:4)},
-            out <- CRPS(x=NA, tel=2, quantiles=seq(0.20, 0.8, length.out = 4)))
+  out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=2)
   expect_equal(out, 0.46)
 })
 
@@ -215,13 +212,8 @@ test_that("1d rank forecast initialization correctly handles NA's and multiple v
 test_that('1d rank forecast quantile calculation is correct', {
   fake_forecast <- structure(list(rank_quantiles=list(x=c(1, 6, 11), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
   OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, by=0.25))
-  expect_equal(unname(OUT), seq(1+2.5, 11-2.5, by=2.5))
-  expect_equal(names(OUT), c("25%", "50%", "75%"))
-})
-
-test_that('1d rank forecast quantile calculation throws errors', {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_rank_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
+  expect_equal(OUT$x, seq(1+2.5, 11-2.5, by=2.5))
+  expect_equal(OUT$q, c(0.25, 0.5, 0.75))
 })
 
 test_that("1D KDE forecast initialization is correct.", {
@@ -236,8 +228,8 @@ test_that("1D KDE forecast initialization is correct.", {
 test_that('1d kde forecast quantile calculation is correct', {
   fake_forecast <- structure(list(model=list(x=c(0, 5, 10), u=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_kde_forecast"))
   OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, length.out = 3))
-  expect_equal(unname(OUT), seq(2.5, 7.5, by=2.5))
-  expect_equal(names(OUT), c("25%", "50%", "75%"))
+  expect_equal(OUT$x, seq(2.5, 7.5, by=2.5))
+  expect_equal(OUT$q, seq(0.25, 0.75, length.out = 3))
 })
 
 test_that("1d KDE CVAR estimate is correct", {
@@ -248,19 +240,26 @@ test_that("1d KDE CVAR estimate is correct", {
   expect_equal(OUT, list(cvar=list(low=15, high=95), var=list(low=25, high=85)))
 })
 
-test_that("1D BMA forecast discrete-continuous model normalization & summation is correct", {
+test_that("BMA QC re-weights model when members are missing", {
+  expect_error(qc_bma_input(c(1, NA) , NA), "Input data*")
+
+  OUT <- qc_bma_input(members=c(1, NA, 4, 5) , model=list(w=c(0.1, 0.2, 0.4, 0.3)))
+  expect_equal(OUT$w, c(0.1/0.8, 0, 0.5, 0.3/0.8))
+  expect_equal(sum(OUT$w), 1)
+})
+
+test_that("1D BMA forecast discrete-continuous model weighting & summation is correct", {
   PoC <- c(0, 0.1, 0.5)
-  mem <- c(1, 5, 11) # Last should be truncated
+  mem <- c(1, 5, 10)
   w <- c(0.5, 0.1, 0.4)
   xseq <- seq(0.25, 0.75, by=0.25)
   mp <- 10
-  fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA),
+  fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA, percent_clipping_threshold=0.9),
                            max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
 
-  with_mock(get_poc = function(x, A, ...) return(A),
-            get_rho = function(x, ...) return(x),
-            get_gamma = function(x, ...) return(x),
-            dbeta_gamma_rho = function(xseq, g, r) return(xseq*g),
+  with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
+            dbeta = function(xseq, a, b) return(xseq*(a)),
+            pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
             out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
   expect_equal(out$members$PoC, PoC)
   expect_equal(out$PoC, 0.21)
@@ -268,26 +267,68 @@ test_that("1D BMA forecast discrete-continuous model normalization & summation i
   expect_equal(out$xseq, xseq*mp)
   mem_sum <- 0.1*1*0.5 + 0.5*0.9*0.1 + 1*0.5*0.4
   expect_equal(out$dbeta, xseq*mem_sum/mp)
+  expect_equal(out$pbeta, xseq*mem_sum)
+  expect_equal(out$geometries, list("U type"=0, "Reverse J"=2, "J-type"=0, "Upside-down U"=1, "Missing"=0)) # 0.1, 1; 0.5, 5, 1, 10
 })
 
-test_that("BMA quantile throws error", {
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_bma_forecast")), quantiles=seq(0, 0.75, by=0.25)), "Bad input*")
-  expect_error(calc_quantiles(structure(list(), class = c("prob_forecast", "prob_1d_bma_forecast")), quantiles=seq(0.25, 1, by=0.25)), "Bad input*")
+test_that("1D BMA forecast discrete-continuous model handles missing forecast members", {
+  PoC <- c(0, 0.1, NA)
+  mem <- c(1, 5, NA)
+  w <- c(0.5, 0.5, 0)
+  xseq <- seq(0.25, 0.75, by=0.25)
+  mp <- 10
+  fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA, percent_clipping_threshold=0.9),
+                           max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
+
+  with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
+            dbeta = function(xseq, a, b) return(xseq*(a)),
+            pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
+            out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
+  expect_equal(out$members$PoC, PoC)
+  expect_equal(out$PoC, 0.05)
+  expect_equal(out$members$dbeta, matrix(c(0.5*xseq*0.1*(1)/mp, 0.5*xseq*0.5*(1-0.1)/mp, NA*xseq), ncol=3))
+  expect_equal(out$geometries, list("U type"=0, "Reverse J"=2, "J-type"=0, "Upside-down U"=0, "Missing"=1)) # 0.1, 1; 0.5, 5; NA, NA
 })
 
-test_that("BMA quantile calculation handles infinities on boundaries", {
-  # Unknown quantiles on the left are set to 0
-  fake_x <- structure(list(max_power=3, model=list(PoC=0.1, dbeta=c(Inf, seq(0.25, 1, by=0.25)), xseq=seq(0, 4, by=1))), class = c("prob_forecast", "prob_1d_bma_forecast"))
-  with_mock(get_discrete_continuous_model = function(x) return(x$model),
-            cumtrapz = function(x, y) return(y),
-            OUT <- calc_quantiles(fake_x, quantiles=c(0.2, 0.375)))
-  expect_equal(unname(OUT), c(0, 1.5))
-
-  # Unknown quantiles on the rgight are set to rated power (in this case, the quantile at 0.8)
-  fake_x <- structure(list(max_power=3, model=list(PoC=0.1, dbeta=c(seq(0, 0.75, by=0.25), Inf), xseq=seq(0, 4, by=1))), class = c("prob_forecast", "prob_1d_bma_forecast"))
-  with_mock(get_discrete_continuous_model = function(x) return(x$model),
-            cumtrapz = function(x, y) return(y),
-            OUT <- calc_quantiles(fake_x, quantiles=c(0.125, 0.8, 0.9)))
-  expect_equal(unname(OUT), c(0.5, 3, 3))
+test_that("pbeta subfunction calculation handles minimum threshold resolution", {
+  with_mock(pbeta=function(xseq, a, b) return(xseq),
+            expect_equal(pbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10), c(seq(0, 0.6, length.out = 10), 1)/2))
 })
 
+test_that("pbeta subfunction calculation handles larger threshold resolution", {
+  with_mock(pbeta=function(xseq, a, b) return(xseq),
+            expect_equal(pbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9), c(seq(0, 0.6, length.out = 9), 0.8, 1)/2))
+})
+
+test_that("get_alpha_betas normalization and calculation is correct", {
+  PoC <- c(0, 0.1, 0.5)
+  mem <- c(1, 5, 11) # Last should be truncated
+  mp <- 10
+  fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=NA, A_transform=NA, B_transform=NA),
+                           max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
+
+  with_mock(get_poc = function(x, A, ...) return(A),
+            get_rho = function(x, ...) return(x),
+            get_gamma = function(x, ...) return(x),
+            out <- get_alpha_betas(fake_x)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
+  expect_equal(out$PoC, PoC)
+  expect_equal(out$alphas, c(0.1, 0.5, 1)^2)
+  expect_equal(out$betas, c(0.1, 0.5, 1)*(1-c(0.1, 0.5, 1)))
+})
+
+test_that('1d bma forecast quantile calculation is correct', {
+  fake_forecast <- structure(list(max_power=10), class = c("prob_forecast", "prob_1d_bma_forecast"))
+  q <- c(0.2, 0.4, 0.6, 0.8)
+  with_mock(get_discrete_continuous_model=function(...) return(list(xseq=c(0, 3, 10), pbeta=c(0, 0.3, 1), PoC=0.2)),
+            OUT <- calc_quantiles(fake_forecast, quantiles=q))
+  expect_equal(OUT$q, q)
+  expect_equal(OUT$x, c(2, 4, 6, 8))
+})
+
+test_that("beta distribution geometry code lookup is correct", {
+  expect_equal(get_beta_distribution_geometry_code(0.5, NA), 0)
+  expect_equal(get_beta_distribution_geometry_code(0.5, 0.5), 1)
+  expect_equal(get_beta_distribution_geometry_code(0.5, 1), 2)
+  expect_equal(get_beta_distribution_geometry_code(1, 0.5), 3)
+  expect_equal(get_beta_distribution_geometry_code(1, 1), 4)
+})
