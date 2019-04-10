@@ -28,15 +28,17 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
   # 2. linear regression for b's.
   mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel, form=lm_formula, B_transform = B_transform,
                                                                      percent_clipping_threshold=percent_clipping_threshold))
+  # Force intercept to 0 if it is not included in the model
   B0 <- sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
-  B1 <- sapply(mem_mean_models, function(m) return(m$coefficients["x", "Estimate"]))
+  # Force slope NA if it is missing -- this can happen when the member training data is always 0, returning in singularities in the glm fit.
+  B1 <- sapply(mem_mean_models, function(m) return(ifelse("x" %in% rownames(m$coefficients), m$coefficients["x", "Estimate"], NA)))
 
   fit_statistics <- data.frame("A0 p-value"=sapply(mem_discrete_models, function(m) return(unname(m$prob["(Intercept)"]))),
                                "A1 p-value"=sapply(mem_discrete_models, function(m) return(unname(m$prob["x"]))),
                                "A AIC"=sapply(mem_discrete_models, function(m) return(m$aic)),
                                "B0 p-value"=sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Pr(>|t|)"], NA))),
-                               "B1 p-value"=sapply(mem_mean_models, function(m) return(m$coefficients["x", "Pr(>|t|)"])),
-                               "B r-squared"=sapply(mem_mean_models, function(m) return(m$r.squared)))
+                               "B1 p-value"=sapply(mem_mean_models, function(m) return(ifelse("x" %in% rownames(m$coefficients), m$coefficients["x", "Pr(>|t|)"], NA))),
+                               "B r-squared"=sapply(mem_mean_models, function(m) return(m$r.squared))) # If singularities occur in fitting, r.squared value with be 0.
 
   # 3. ME algorithm for w's and c's
   # In future, the above could be expanded to have unique site values. For now, matrices are expanded to arrays assuming a "single" site (i.e., global values).

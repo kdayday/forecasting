@@ -96,6 +96,34 @@ test_that("beta1_ens_modesl coefficient data look-up is correct", {
                                               "B r-squared"=c(0.5, 0.5, 0.5)))
 })
 
+
+test_that("beta1_ens_modesl coefficient data look-up handles missing fields", {
+  fake_lr <- function(e, tel, ...) {
+    coeffs <- c(sum(e), sum(tel))
+    names(coeffs) <- c("(Intercept)", "x")
+    probs <- c(e[1],e[3])
+    names(probs) <- c("(Intercept)", "x")
+    return(list(coefficients=coeffs, prob=probs, aic=10))
+  }
+  fake_lm <- function(e, tel, ...) {
+    coeffs <- data.frame(Estimate=numeric(), p=numeric())
+    names(coeffs) <- c("Estimate", "Pr(>|t|)") # Overwrite with special character names
+    return(list(coefficients=coeffs, r.squared=0))
+  }
+  with_mock(get_lr= fake_lr, get_lm=fake_lm,
+            em = function(...) return(list(C0=NA, C1=NA, w=NA, log_lik=NA)),
+            OUT <- beta1_ens_models(tel=c(0.25, 0.5, 0.75), ens=matrix(seq(0.1, 0.9, by=0.1), ncol=3))
+  )
+  expect_equal(OUT$B0, c(0, 0, 0))
+  expect_equal(OUT$B1, c(NA, NA, NA))
+  expect_equal(OUT$fit_statistics, data.frame("A0 p-value"=c(0.1, 0.4, 0.7),
+                                              "A1 p-value"=c(0.3, 0.6, 0.9),
+                                              "A AIC"=c(10,10,10),
+                                              "B0 p-value"=c(NA, NA, NA),
+                                              "B1 p-value"=c(NA, NA, NA),
+                                              "B r-squared"=c(0, 0, 0)))
+})
+
 test_that("get_lm clipping threshold is correct", {
   with_mock(lm= function(form, data, ...) return(data),
             summary = function(x) return(x),
