@@ -248,6 +248,8 @@ get_rho <- function(FCST, B0, B1, B_transform=NA) {
   # Truncate mu just below 1, useful for those ensemble members that end up with positive B1
   if (mu >= 1)
       mu <- 1-1e-6
+  if (mu <= 0 )
+      mu <- 1e-6
   return(mu)
 }
 
