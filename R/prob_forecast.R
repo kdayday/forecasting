@@ -43,8 +43,8 @@ CRPS <- function(x, tel) {
 
 #' Plot probabilistic forecast's quantiles
 plot.prob_forecast <- function(x) {
-  plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Density',
-       main='Quantiles', sub = paste("Location: ", x$location, ", Time:", x$time))
+  plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Distribution',
+      sub = paste("Location: ", x$location, ", Time:", x$time))
 }
 
 #' Check probabilistic forecast class
@@ -558,7 +558,7 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
     ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=1.3) +
     ggplot2::geom_point(data=data.frame(x=c(x$max_power), y=c(model$PoC)), size=4, col="black", fill="black", shape=21) +
     ggplot2::xlab("Power [MW]") +
-    ggplot2::ylab("Probability") +
+    ggplot2::ylab("Probability Density") +
     ggplot2::geom_point(data=data.frame(x=x$members, y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
 
   if (!is.na(actual)) {

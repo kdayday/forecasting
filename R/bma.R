@@ -175,7 +175,7 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_c
   # n members = dim(FCST)[3]
   w.new <- sapply(1:dim(FCST)[3], function(k) {ifelse(any(!is.na(z[,,k])), mean(z[,,k], na.rm=TRUE), 0)})
 
-  ## CM-1 step
+  ## CM-2 step
   # Using the new w estimate, re-optimize C0
   if (count%%CM2.iter == 0) {
     opt <- optimize(get_log_lik, interval=c(0, 0.25), w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform,

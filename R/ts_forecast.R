@@ -120,7 +120,7 @@ plot.ts_forecast <- function(x, ..., tel=NA) {
       plotdata[,i] <- x$forecasts[[i]]$quantiles$x
     } else plotdata[,i] <- 0
   }
-  graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Aggregate power [W]")
+  graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Power [MW]")
   fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
                rlab=NULL, start=x$time_step, frequency=1/x$time_step)
   if (any(!is.na(tel))) {
