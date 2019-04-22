@@ -7,9 +7,10 @@
 #' @param scale One of 'site', 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
 #' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
 #' @param ... optional arguments to the prob_forecast object
-ts_forecast <- function(x, start_time, time_step, scale, location, method, MoreTSArgs=NA, ...) {
+ts_forecast <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
   # Check inputs
   if (!is.array(x)) stop("Bad input. x must be an array.")
   if (!((length(dim(x))==2 & tolower(scale) %in% c("site", "s")) | (length(dim(x))==3 & tolower(scale) %in% c("region", "total", "r", "t")))){
@@ -17,7 +18,7 @@ ts_forecast <- function(x, start_time, time_step, scale, location, method, MoreT
   }
   if (any(names(MoreTSArgs) %in% c("location", "time"))) stop("MoreTSArgs may not include location or time, which are reserved names.")
 
-  sun_up <- apply(x, MARGIN=1, FUN=check_sunup)
+  sun_up <- apply(x, MARGIN=1, FUN=check_sunup, sun_up_threshold=sun_up_threshold)
   forecasts <- calc_forecasts(x, sun_up, start_time=start_time, time_step=time_step, scale=scale, location=location,
                               method=method, MoreTSArgs=MoreTSArgs, ...)
 
@@ -35,8 +36,8 @@ ts_forecast <- function(x, start_time, time_step, scale, location, method, MoreT
 #'
 #' @param x A matrix
 #' @return A boolean
-check_sunup <- function(x){
-  return(any(x>0, na.rm=TRUE))
+check_sunup <- function(x, sun_up_threshold=0.5){
+  return(any(x>=sun_up_threshold, na.rm=TRUE))
 }
 
 #' Calculate a time series list of power forecasts.

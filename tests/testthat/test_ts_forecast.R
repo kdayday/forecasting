@@ -80,9 +80,9 @@ test_that("ts_forecast calculate handles additional time-series arguments correc
 
 # This is bad testing, but mainly to convince myself of the logic.
 test_that("Check sun-up works correctly", {
-  lst <- list(matrix(c(0,0, 0, 0), ncol=2), matrix(c(2,3), ncol=2), matrix(c(0, 0), ncol=1))
-  OUT <- unlist(lapply(lst, check_sunup))
-  expect_identical(OUT, c(FALSE, TRUE, FALSE))
+  lst <- list(matrix(c(0,0, 0, 0), ncol=2), matrix(c(2,3), ncol=2), matrix(c(0, 0.5), ncol=1), matrix(c(0, 0.4), ncol=1))
+  OUT <- unlist(lapply(lst, check_sunup, sun_up_threshold=0.5))
+  expect_identical(OUT, c(FALSE, TRUE, TRUE, FALSE))
 })
 
 test_that("Equalize telemetry throws error on input checks.", {
