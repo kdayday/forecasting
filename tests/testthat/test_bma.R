@@ -56,13 +56,14 @@ test_that("e_step sumz handles NaN's.", {
 })
 
 test_that("em_subfunction is correct.", {
-  with_mock(e_step=function(...) {return(list(z=(array(c(0.1, 0.2, 0.3, NA, seq(0.2, 0.8, by = 0.2), rep(NA, 4)), dim=c(2, 2, 3)))))},
+  with_mock(e_step=function(...) {return(list(z=(array(c(0.1, 0.2, 0.3, NA, seq(0.3, 0.9, by = 0.2), rep(NA, 4)), dim=c(2, 2, 3)))))},
             optimize=function(...) {return(list(maximum=2))},
-            OUT <- em_subfunction(FCST=array(1:12, dim = c(2,2,3)), OBS=NA, PoC=NA, B0=NA, B1=NA, C0=4, w=c(1, 0.7, 0),
+            OUT <- em_subfunction(FCST=array(1:12, dim = c(2,2,3)), OBS=NA, PoC=NA, B0=NA, B1=NA, C0=4, w=c(0.2, 0.8, 0),
                                   percent_clipping_threshol=NA, count=1, CM2.iter=1))
-  expect_equal(OUT$w, c(0.2, 0.5, 0))
+  expect_equal(OUT$w, c(0.25, 0.75, 0))
+  expect_equal(sum(OUT$w, na.rm=T), 1)
   expect_equal(OUT$C0, 2)
-  expect_equal(abs(OUT$error), c(0.8, 0.2, 0, 2))
+  expect_equal(abs(OUT$error), c(0.05, 0.05, 0, 2))
 })
 
 test_that("beta1_ens_modesl throws errors", {

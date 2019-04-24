@@ -174,6 +174,8 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_c
   # new weights and variance deflation
   # n members = dim(FCST)[3]
   w.new <- sapply(1:dim(FCST)[3], function(k) {ifelse(any(!is.na(z[,,k])), mean(z[,,k], na.rm=TRUE), 0)})
+  # Minor adjustment for rounding error so weights sum to 1
+  w.new <- w.new/sum(w.new, na.rm=T)
 
   ## CM-2 step
   # Using the new w estimate, re-optimize C0
