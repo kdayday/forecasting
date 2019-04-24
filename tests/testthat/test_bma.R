@@ -137,6 +137,11 @@ test_that("get_lm clipping threshold is correct", {
   expect_equal(dim(OUT), c(1,2))
 })
 
+test_that("get_lm handles missing or no unclipped data", {
+  OUT <- get_lm(fc=c(0.2, 0.4, 0.6), tel=c(NA, 0.95, 0.99), form=NA, B_transform=function(x) return(x), percent_clipping_threshold=0.95)
+  expect_true(all(is.na(OUT$coefficients)))
+})
+
 test_that("get_lr clipping threshold is correct", {
   with_mock(logistf= function(form, data, ...) return(data),
             extractAIC = function(...) return(NA),

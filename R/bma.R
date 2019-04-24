@@ -101,7 +101,11 @@ get_lr <- function(fc, tel, form, A_transform, percent_clipping_threshold){
 get_lm <- function(fc, tel, form, B_transform, percent_clipping_threshold){
   unclipped <- tel < percent_clipping_threshold
   if (typeof(B_transform)=="closure") fc <- sapply(fc, FUN = B_transform)
-  return(summary(lm(form, data=data.frame(x=fc[unclipped], y=tel[unclipped]))))
+  # Set unclipped component values if there no non-NA unclipped values
+  if (sum(unclipped, na.rm=T)==0) {
+    coefficients <- matrix(c(NA, NA, NA, NA), ncol = 2, dimnames=list(c("(Intercept)", "x"), c("Estimate", "Pr(>|t|)")))
+    return(list(r.squared=NA, coefficients=coefficients))
+  } else return(summary(lm(form, data=data.frame(x=fc[unclipped], y=tel[unclipped]))))
 }
 
 # Expectation-maximization function, modified from code courtesy of Will Kleiber
