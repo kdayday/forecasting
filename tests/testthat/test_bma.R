@@ -9,18 +9,23 @@ test_that("Probability of clipping calculation is correct.", {
   expect_equal(get_poc(FCST=1, A0=0.1, A1=1.2, A2=1), 1/(1+exp(-2.3))) # 0.1+1.2*1+1
 })
 
-test_that("get_z is correct, including clipping threshold", {
-  expect_equal(get_z(OBS=0.99, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99), 0.2) # 0.5 * 0.4 = 0.2
-  expect_equal(get_z(OBS=0.989, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99), 0.003) # 0.5 * 0.6 * 0.01 =0.003
+test_that("get_weighted_probability is correct, including clipping threshold", {
+  # Clipped
+  with_mock(dbeta = function(obs, a, b) return(a + b),
+            expect_equal(get_weighted_probability(OBS=0.99, PoC=0.4, gamma=0.1, rho=0.4, w=0.5, percent_clipping_threshold=0.99), 20)) # 0.5 * 0.4/0.01 = 20
+  # Unclipped
+  with_mock(dbeta =function(obs, a, b) return(a+b), # db = 0.01
+            pbeta =function(obs, a, b) return(0.8),
+    expect_equal(get_weighted_probability(OBS=0.989, PoC=0.4, gamma=0.01, rho=0.4, w=0.5, percent_clipping_threshold=0.99), 0.00375)) # 0.5 * 0.6 * 0.01/0.8 =0.00375
 })
 
-test_that("get_z handles missing members", {
-  expect_true(is.na(get_z(OBS=NA, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99)))
-  expect_true(is.na(get_z(OBS=0.8, PoC=NA, db=0.01, w=0.5, percent_clipping_threshold=0.99)))
+test_that("get_weighted_probability handles missing members", {
+  expect_true(is.na(get_weighted_probability(OBS=NA, PoC=0.4, gamma=0.01, rho=0.4, w=0.5, percent_clipping_threshold=0.99)))
+  expect_true(is.na(get_weighted_probability(OBS=0.8, PoC=NA, gamma=0.01, rho=0.4, w=0.5, percent_clipping_threshold=0.99)))
 })
 
-test_that("get_z returns missing for observataions at 0", {
-  expect_true(is.na(get_z(OBS=0, PoC=0.4, db=0.01, w=0.5, percent_clipping_threshold=0.99)))
+test_that("get_weighted_probability returns missing for observataions at 0", {
+  expect_true(is.na(get_weighted_probability(OBS=0, PoC=0.4, gamma=0.01, rho=0.4, w=0.5, percent_clipping_threshold=0.99)))
 })
 
 test_that("e_step array handling is correct.", {
@@ -34,8 +39,8 @@ test_that("e_step array handling is correct.", {
 
   with_mock(get_rho= function(FCST, B0, B1, ...) return(sum(FCST, B0, B1)),
             get_gamma = function(rho, C0) return(sum(rho, C0)), # 3:2:17
-            dbeta_gamma_rho = function(OBS, gammas, rhos) return(sum(OBS, gammas, rhos)), # 6, 11, 16, 21, 22, 27, 32, 37
-            get_z= function(OBS, PoC, db, w, percent_clipping_threshold) return(db-PoC+OBS+w), #  c(4, 7, 10, 13, 8, 11, 14, 17 ) -> c(14, 17, 20, 23, 28, 31, 34, 37)
+            # 6, 11, 16, 21, 22, 27, 32, 37 ->  c(4, 7, 10, 13, 8, 11, 14, 17 ) -> c(14, 17, 20, 23, 28, 31, 34, 37)
+            get_weighted_probability= function(OBS, PoC, gamma, rho, w, percent_clipping_threshold) return(sum(OBS, gamma, rho)-PoC+OBS+w),
             OUT <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform=NA, percent_clipping_threshold=NA))
   expect_equal(OUT$z, array(c(14/42, 17/48, 20/54, 23/60, 28/42, 31/48, 34/54, 37/60), dim=c(2,2,2)))
   expect_equal(OUT$sumz, matrix(c(42, 48, 54, 60), ncol=2))
@@ -44,8 +49,7 @@ test_that("e_step array handling is correct.", {
 test_that("e_step sumz handles NaN's.", {
   OBS <-array(c(NA, 1, 1, NA, NA, 2), dim=c(3, 1, 2))
   with_mock(get_rho= function(...) return(NA), get_gamma = function(...) return(NA),
-            dbeta_gamma_rho = function(...) return(NA),
-            get_z= function(x, ...) return(x),
+            get_weighted_probability= function(x, ...) return(x),
             OUT <- e_step(w=NA, C0=NA, OBS=OBS, FCST=OBS, B0=NA, B1=NA, PoC=NA, B_transform=NA, percent_clipping_threshold=NA))
   expect_equal(OUT$z, array(c(NA, 1, 1/3, NA, NA, 2/3), dim=c(3, 1, 2)))
   expect_equal(OUT$sumz, matrix(c(NA, 1, 3), ncol=1))

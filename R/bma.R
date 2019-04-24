@@ -195,12 +195,11 @@ e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_
   # Re-calculate beta density estimates based on current estimate for C0
   rhos <- array(mapply(get_rho, FCST, B0, B1, MoreArgs = list(B_transform=B_transform)), dim(FCST))
   gammas <- array(mapply(get_gamma, rhos, MoreArgs = list(C0=C0)), dim(FCST))
-  # Using linear indexing, OBS gets recycled across members
-  db <- array(mapply(dbeta_gamma_rho, OBS, gammas, rhos), dim(FCST))
 
   # z is an array with the first entry being day, second entry site, third entry forecast
   # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
-  z_num <-  array(mapply(get_z, OBS, PoC, db, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(percent_clipping_threshold=percent_clipping_threshold)), dim(FCST)) # Linear indexing, OBS is recycled across members, w explicitly expanded
+  # Linear indexing, OBS is recycled across members, w explicitly expanded
+  z_num <-  array(mapply(get_weighted_probability, OBS, PoC, gammas, rhos, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(percent_clipping_threshold=percent_clipping_threshold)), dim(FCST))
 
   # sumz is weighted sum of density functions across the members. Rows are single training days, columns are sites
   sumz <- apply(z_num, MARGIN=c(1,2), FUN=function(z) ifelse(all(is.na(z)), NA, sum(z, na.rm=T))) # If all members are missing, return NA; else sum the others.
@@ -214,13 +213,20 @@ get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clip
   return(sum(log(sumz), na.rm=T))
 }
 
-# Get z for single instance
+# Get z=weighted probability for single instance
 # Returns NA for missing values and observations exactly at 0
-# density is (PoC)*1[obs==1] + (1-PoC)*Beta(obs,a,b)*1[obs < 1]
-# Uses tolerance to determine if obs == 1
-get_z <- function(OBS, PoC, db, w, percent_clipping_threshold) {
+# Defines clipping with a percentage threshold, lambda
+# density is (PoC/(1-lambda))*1[obs>=lambda] + ((1-PoC)/CDF(lambda))*Beta(obs,a,b)*1[obs < lambda]
+get_weighted_probability <- function(OBS, PoC, gamma, rho, w, percent_clipping_threshold) {
   if (is.na(OBS) | OBS==0) {return(NA)}
-  else return(ifelse(OBS >= percent_clipping_threshold, w*PoC, w*(1-PoC)*db))
+  if (OBS >= percent_clipping_threshold) return(w*PoC/(1-percent_clipping_threshold))
+  else {
+    alpha <- rho * gamma
+    beta <- gamma * (1-rho)
+    db <- stats::dbeta(OBS, alpha, beta)
+    threshold_CD <- stats::pbeta(percent_clipping_threshold, alpha, beta) # Scaling factor: cumulative density at the threshold
+    return((w*(1-PoC)/threshold_CD)*db)
+  }
 }
 
 # Get PoC (probability of clipping) for single instance
