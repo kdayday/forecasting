@@ -57,19 +57,25 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
   class_type <- get_forecast_class(scale, method)
   sub_func <- function(i, time, sun_up){
     if (sun_up) {
-      # If additional time-series arguments are provided, this time points arguments are added to the list of optional arguments
-      if (class_type$dim == '1') { # Can't use ifelse function or it will just return the first value
-        args <- list(data.input=x[i,], location=location, time=time)
-      } else {
-        args <- list(data.input=x[i,,], location=location, time=time)
-      }
+      forecast <- tryCatch({
+        # If additional time-series arguments are provided, this time points arguments are added to the list of optional arguments
+        if (class_type$dim == '1') { # Can't use ifelse function or it will just return the first value
+          args <- list(data.input=x[i,], location=location, time=time)
+        } else {
+          args <- list(data.input=x[i,,], location=location, time=time)
+        }
 
-      # Doing this manually to ensure list elements are coerced into a different type
-      for (name in names(list(...))) {args[[name]] <- list(...)[[name]]}
-      moreargs <- sapply(names(MoreTSArgs), FUN=function(name) return(name=MoreTSArgs[[name]][[i]]), simplify=F)
-      for (name in names(moreargs)) {args[[name]] <- moreargs[[name]]}
+        # Doing this manually to ensure list elements are coerced into a different type
+        for (name in names(list(...))) {args[[name]] <- list(...)[[name]]}
+        moreargs <- sapply(names(MoreTSArgs), FUN=function(name) return(name=MoreTSArgs[[name]][[i]]), simplify=F)
+        for (name in names(moreargs)) {args[[name]] <- moreargs[[name]]}
 
-      return(do.call(class_type$class, args))
+        return(do.call(class_type$class, args))
+      }, error = function(e) {
+        e$message <- paste(e$message, "in forecasting time", time, "for location", location)
+        stop(e)
+      })
+      return(forecast)
     } else {return(NA)}}
   return(mapply(sub_func, seq_len(dim(x)[1]), start_time + (seq_len(dim(x)[1])-1)*lubridate::dhours(time_step), sun_up, SIMPLIFY=FALSE))
 }
