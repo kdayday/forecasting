@@ -272,6 +272,30 @@ Brier <- function(ts, tel, PoE, ...) {
   return(mean((PoE-indicator)^2, na.rm = TRUE))
 }
 
+# Plot Brier score along the quantiles from 1 to 99
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+#' @param nmem Number of ensemble members, to illustrate the n+1 bins
+plot_brier <- function(ts, tel, nmem = NA) {
+  q <- 1:99
+  b <- sapply(q, FUN = function(qi) Brier(ts, tel, (100-qi)/100))
+
+  g <- ggplot2::ggplot(data=data.frame(x=q, y=b), mapping=ggplot2::aes(x=x, y=y)) +
+      ggplot2::xlab("Quantile") +
+      ggplot2::ylab("Brier score") +
+      ggplot2::theme_light()
+
+  if (!is.na(nmem)) {
+    xstart <-  seq(0, 100, by=100/(nmem+1)*2)
+    xend <- seq(100/(nmem+1), 100, by=100/(nmem+1)*2)
+    rects <- data.frame(xstart=xstart[1:length(xend)], xend = xend)
+    g <- g + ggplot2::geom_rect(data = rects, mapping=ggplot2::aes(xmin = xstart, xmax = xend, ymin = -Inf, ymax = Inf), fill = "gray", inherit.aes = FALSE, alpha=0.4)
+  }
+  g <- g + ggplot2::geom_point()
+
+  plot(g)
+}
+
 #' Get mean absolute error between the forecast median and the actual value
 #'
 #' @param ts A ts_forecast object
