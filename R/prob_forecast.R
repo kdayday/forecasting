@@ -37,8 +37,12 @@ trapz <- function(width, height) {
 CRPS <- function(x, tel) {
   y <- x$quantiles$x
 
-  # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation
-  crps <- trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2)
+  # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation,
+  # plus one of two optional rectangles representing additional CRPS area if the telemetry was an outlier outside the forecasted quantiles
+  crps <- ifelse(tel < min(y), min(y)-tel, 0) + # lower outlier rectangular area of height 1 (implied)
+          trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + # Area below heaviside step
+          trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2) + # Area above heaviside step
+          ifelse(tel > max(y), tel-max(y), 0)# upper outlier rectangular area of height 1 (implied)
 }
 
 #' Plot probabilistic forecast's quantiles
@@ -46,6 +50,46 @@ plot.prob_forecast <- function(x) {
   plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Distribution',
       sub = paste("Location: ", x$location, ", Time:", x$time))
 }
+
+#' Plot probabilistic forecast's CRPS illustration
+plot_crps <- function(x, tel) {
+  if (!is.prob_forecast(x)) stop("x must be a prob_forecast object to plot CRPS")
+  y <- x$quantiles$x
+
+  if (tel < min(y)) {
+    upper_area.x <- c(tel, min(y), x$quantiles$x[y >= tel])
+    upper_area.y <- c(1, 1, (x$quantiles$q[y >= tel]-1)^2)
+  } else {
+    upper_area.x <- x$quantiles$x[y >= tel]
+    upper_area.y <- (x$quantiles$q[y >= tel]-1)^2
+  }
+  if (tel > max(y)) {
+    lower_area.x <- c(x$quantiles$x[y <= tel], max(y), tel)
+    lower_area.y <- c(x$quantiles$q[y <= tel]^2, 1, 1)
+  } else {
+    lower_area.x <- x$quantiles$x[y <= tel]
+    lower_area.y <- x$quantiles$q[y <= tel]^2
+  }
+
+  g <- ggplot2::ggplot(data.frame(x=x$quantiles$x, y=x$quantiles$q), mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::theme_light() +
+    ggplot2::geom_line(size=1.3)
+  if (any(y<=tel)) {
+    g <- g + ggplot2::geom_ribbon(data=data.frame(x=lower_area.x, y=lower_area.y), mapping=ggplot2::aes(ymin=0, ymax=y), fill="gray90", col="gray60")
+  }
+    if (any(y>=tel)) {
+    g <- g + ggplot2::geom_ribbon(data=data.frame(x=upper_area.x, y=upper_area.y), mapping=ggplot2::aes(ymin=1-y, ymax=1), fill="gray90", col="gray60")
+  }
+  g <- g + ggplot2::geom_line(data=data.frame(x=c(0, tel), y=c(0,0)), size=1.3, col='darkolivegreen4') +
+    ggplot2::geom_line(data=data.frame(x=c(tel, tel), y=c(0,1)), size=1.3, col='darkolivegreen4') +
+    ggplot2::geom_line(data=data.frame(x=c(tel, max(c(lower_area.x, upper_area.x))), y=c(1,1)), size=1.3, col='darkolivegreen4', linetype="solid") +
+    ggplot2::xlab("Power [MW]") +
+    ggplot2::ylab("Cumulative Distribution") +
+    ggplot2::ggtitle(paste("CRPS:", round(CRPS(x, tel), 2), "MW"))
+
+  plot(g)
+}
+
 
 #' Check probabilistic forecast class
 is.prob_forecast <- function(x) inherits(x, "prob_forecast")

@@ -133,10 +133,24 @@ test_that("Interval score calculation throws error for bad input", {
 
 test_that("CRPS estimation is correct", {
   # Squared: 0.04, 0.16, | 0.36, 0.16
-  # 0.04 + 0.5*0.12 = 0.1; 0.16 + 0.5*0.2 + 0.04 * 0.5*0.12= 0.26 + 0.1=0.36
+  # 0.5*(0.16+0.04) = 0.1; 0.5*(0.36+0.16) + 0.5*(0.16+0.04)= 0.26 + 0.1=0.36
   # 0.1 + 0.36 = 0.46
   out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=2)
   expect_equal(out, 0.46)
+})
+
+test_that("CRPS lower outlier calculation is correct", {
+  # Squared:  1, 0.64, 0.36, 0.16, 0.04
+  # 1 + 0.5*(0.64+0.36) + 0.5*(0.36+0.16) + 0.5*(0.16+0.04)
+  # 1 + 0.5*(1) + 0.5*52 + 0.5*0.2 = 1 + 0.5 + 0.26 + 0.1 = 1.86
+  out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=0)
+  expect_equal(out, 1.86)
+})
+
+test_that("CRPS upper outlier calculation is correct", {
+  # As for lower outlier, with outlier rectangle of 2
+  out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=6)
+  expect_equal(out, 2.86)
 })
 
 fake_sampling <- function(x,y){
