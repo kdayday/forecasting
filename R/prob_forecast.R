@@ -408,13 +408,14 @@ qc_input <- function(dat) {
 #' @param data.input A numeric vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
+#' @param max_power Maximum power for normalizing forecast to [0,1]
 #' @return A 1-dimensional probabilistic forecast object
-prob_1d_rank_forecast <- function(data.input, location, time, ...) {
+prob_1d_rank_forecast <- function(data.input, location, time, max_power, ...) {
   members <- qc_input(data.input)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
-              rank_quantiles = list(x=sort(members), y=(0:(length(members)-1))/(length(members)-1)),
+              rank_quantiles = list(x=c(0, sort(members), max_power), y=(0:(length(members)+1))/(length(members)+1)),
               time = time,
               d = 1)
 

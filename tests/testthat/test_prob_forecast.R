@@ -213,14 +213,13 @@ test_that("Quality control function works correctly and throws errors", {
   expect_equal(qc_input(c(3, NA, 4.5, NA)), c(3, 4.5))
 })
 
-
 test_that("1d rank forecast initialization correctly handles NA's and multiple value.", {
   with_mock(calc_quantiles=mock_pd, qc_input=function(x) return(x),
-            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, 4), location='Odessa', time=1))
+            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, 4), location='Odessa', time=1, max_power = 5))
   expect_true(is.prob_1d_rank_forecast((OUT)))
   expect_equal(length(OUT), 1)
-  expect_equal(OUT$rank_quantiles$x, c(2, 2, 3, 4, 4))
-  expect_equal(OUT$rank_quantiles$y, c(0, 0.25, 0.5, 0.75, 1))
+  expect_equal(OUT$rank_quantiles$x, c(0, 2, 2, 3, 4, 4, 5))
+  expect_equal(OUT$rank_quantiles$y, c(0, 1/6, 2/6, 3/6, 4/6, 5/6, 1))
 })
 
 test_that('1d rank forecast quantile calculation is correct', {
