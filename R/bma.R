@@ -99,9 +99,11 @@ get_lr <- function(fc, tel, form, A_transform, percent_clipping_threshold){
 #' @param percent_clipping_threshold Percentage threshold for determining if clipping is occurring
 #' @return Summary of the lm model
 get_lm <- function(fc, tel, form, B_transform, percent_clipping_threshold){
-  unclipped <- tel < percent_clipping_threshold
+  # Only grab values that are unclipped and that have both forecast and telemetry available
+  unclipped <- tel < percent_clipping_threshold & !is.na(tel) & !is.na(fc)
   if (typeof(B_transform)=="closure") fc <- sapply(fc, FUN = B_transform)
   # Set unclipped component values if there no non-NA unclipped values
+  # If there is only one point, it will get the slope of that point.
   if (sum(unclipped, na.rm=T)==0) {
     coefficients <- matrix(c(NA, NA, NA, NA), ncol = 2, dimnames=list(c("(Intercept)", "x"), c("Estimate", "Pr(>|t|)")))
     return(list(r.squared=NA, coefficients=coefficients))
