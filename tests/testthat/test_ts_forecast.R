@@ -147,10 +147,10 @@ test_that("Calculation of number of time points without night-time and NaN's in 
 quants <- seq(0.1, 0.9, by=0.1)
 x1 <- structure(list(quantiles=list(x=seq(10, 90, 10), q=quants), n=2), class="prob_forecast")
 x2 <- structure(list(quantiles=list(x=seq(5, 45, 5), q=quants), n=2), class="prob_forecast")
-ts <- structure(list(forecasts=list(x1, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
+ts <- structure(list(forecasts=list(NA, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
 
 test_that("Time series of values at certain quantile is extracted correctly.", {
-  expect_equal(get_quantile_time_series(ts, 20), c(20, 20, 10))
+  expect_equal(get_quantile_time_series(ts, 20), c(NA, 20, 10))
 })
 
 test_that("Extraction of time-series at certain quantile throws error.", {
@@ -166,14 +166,14 @@ test_that("Avg CRPS score handles telemetry longer than forecast", {
 })
 
 test_that("Brier score is as expected", {
-  ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(0, 40, 5, 15), fc=ts, translate_forecast_index=identity)),
     expect_equal(Brier(ts, tel=NA, PoE=.8), 0.24)) # mean( (-0.2)^2, (0.8)^2, (-0.2)^2) = (0.64 +0.04 + 0.04)/3 = 0.24
 })
 
 test_that("Brier score calculation handles NaN's", {
-  fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  fake_ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(0, 40, 5, NA), translate_forecast_index=identity)),
             expect_equal(Brier(fake_ts, tel=NA, PoE=.8), 0.34))
@@ -186,7 +186,7 @@ test_that("MAE calculation is correct.", {
 })
 
 test_that("MAE calculation handles NaN's.", {
-  fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  fake_ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25, 30)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(60, 60, 5, NaN), translate_forecast_index=identity)),
             expect_equal(MAE(fake_ts, tel=NA), 15)) # error = 10 and 20
@@ -198,7 +198,7 @@ test_that("Average interval score calculation is correct.", {
 })
 
 test_that("Average interval score calculation handles NaN's.", {
-  fake_ts <- structure(list(forecasts=list(x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  fake_ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(TRUE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(50, 50, 25, NaN), tel_2_fc=1, translate_forecast_index=identity)),
             expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2), list(mean=60, min=40, max=80, sd=stats::sd(c(40, 80))))) # 60=mean(80, 40)
 })
@@ -211,7 +211,7 @@ test_that("Average interval score calculation handles telemetry longer than fore
 })
 
 test_that("Quantile reliability calculation is correct.", {
-  ts <- structure(list(forecasts=list(x1, x1, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  ts <- structure(list(forecasts=list(NA, x1, x1, x2, x2), sun_up=c(TRUE, TRUE, TRUE, TRUE, TRUE)), class='ts_forecast')
 
   # Hits: quantile 1, 4, 7, 10
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(NaN, 0, 33, 33, 100), fc=ts, tel_2_fc=1, translate_forecast_index=identity)),
@@ -221,7 +221,7 @@ test_that("Quantile reliability calculation is correct.", {
 })
 
 test_that("Quantile reliability calculation handles telemetry longer than forecast (index translation function).", {
-  ts <- structure(list(forecasts=list(x1, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
+  ts <- structure(list(forecasts=list(NA, x1, x2), sun_up=c(TRUE, TRUE, TRUE)), class='ts_forecast')
   # Hits: quantile 2, 4, 3, 7
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(NaN, 0, 12, 33, 12, 33), fc=rep(ts, each=2), tel_2_fc=2,
                                                                                   translate_forecast_index=function(i) {floor((i-1)/2)+1})),

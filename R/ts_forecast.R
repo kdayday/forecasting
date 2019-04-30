@@ -146,7 +146,7 @@ get_quantile_time_series <- function(x, alpha) {
   timeseries <- sapply(x$forecasts, FUN=function(forecast, q) {
     if (is.prob_forecast(forecast)){v <- forecast$quantiles$x[which(abs(forecast$quantiles$q-q)<eps)]
       if (length(v)==0) stop(paste(alpha,'quantile not available')) else return(v)}
-    else return(0)},
+    else return(NA)},
     q=q)
   return(timeseries)
 }
@@ -215,6 +215,7 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
   res <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- res$fc
   tel <- res$tel
+  forecast_available <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)$fc
 
   fc_sundown <- length(sun_up[sun_up==FALSE])
   fc_sunup <- length(sun_up[sun_up==TRUE])
@@ -230,7 +231,8 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
               "Telemetry is 0 when sun forecasted down"=tel_sundown_0,
               "Telemetry is non-zero when sun forecasted down"=tel_sundown,
               "Telemetry is NaN when sun forecasted down"=tel_sundown_NaN,
-              "Sunup missing telemetry rate"=tel_sunup_NaN/(tel_sunup+tel_sunup_NaN)
+              "Sunup missing telemetry rate"=tel_sunup_NaN/(tel_sunup+tel_sunup_NaN),
+              "Validatable forecasts"= sum(sun_up & !is.nan(tel) & forecast_available)
          ))
 }
 
@@ -242,10 +244,10 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
 #' @param tel A vector of the telemetry values
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 CRPS_avg <-function(ts, tel, ...){
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- x$fc
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
 
-  crps_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])))
+  crps_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])))
   return(list(mean=mean(crps_list), min=min(crps_list), max=max(crps_list), sd=stats::sd(crps_list)))
 }
 
@@ -262,12 +264,12 @@ Brier <- function(ts, tel, PoE, ...) {
   thresholds <- get_quantile_time_series(ts, 100*(1-PoE))
 
   thresholds <- equalize_telemetry_forecast_length(tel, thresholds, ...)$fc
-  res <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- res$fc
+  res <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- res$fc
   tel <- res$tel
 
   # Find incidence of telemetry exceeding the threshold of exceedance
-  indicator <- as.integer(tel[sun_up & !is.na(tel)] >= thresholds[sun_up & !is.na(tel)])
+  indicator <- as.integer(tel[forecast_available & !is.na(tel)] >= thresholds[forecast_available & !is.na(tel)])
   # Compare Probability of exceedance to its actual incidence
   return(mean((PoE-indicator)^2, na.rm = TRUE))
 }
@@ -305,11 +307,11 @@ plot_brier <- function(ts, tel, nmem = NA) {
 
 MAE <-function(ts, tel, ...) {
   medians <- get_quantile_time_series(ts, 50)
-  sun_up <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)$fc
+  forecast_available <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)$fc
   res <- equalize_telemetry_forecast_length(tel, medians, ...)
   medians <- res$fc
   tel <- res$tel
-  return(mean(abs(medians[sun_up & !is.na(tel)]-tel[sun_up & !is.na(tel)]), na.rm = TRUE))
+  return(mean(abs(medians[forecast_available & !is.na(tel)]-tel[forecast_available & !is.na(tel)]), na.rm = TRUE))
 }
 
 #' Get average interval score, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
@@ -322,9 +324,9 @@ MAE <-function(ts, tel, ...) {
 #' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average IS value
 IS_avg <-function(ts, tel, alpha, ...) {
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- x$fc
-  is_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)})
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
+  is_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)})
   return(list(mean=mean(is_list), min=min(is_list), max=max(is_list), sd=stats::sd(is_list)))
 }
 
@@ -380,8 +382,8 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
 #' @param quants Provide a vector of bin breakpoints, or NA to use the given quantiles
 #' @return list of the quantiles and their hit rates
 get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- x$fc
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
 
   # Get the list of quantiles that have been evaluated, and add top limit at 1
   if (all(is.na(quants))) {
@@ -389,7 +391,7 @@ get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
   }
 
   # Find time-points where telemetry and forecast data is available
-  indices <- which(!is.nan(x$tel) & sun_up==TRUE)
+  indices <- which(forecast_available & !is.na(x$tel))
   q_idx_subfunc <- function(i) {
     list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x > x$tel[i]) # List of quantile indices above telemetry value
     if (length(list_idx) > 0) {idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
