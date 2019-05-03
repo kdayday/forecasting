@@ -24,6 +24,20 @@ IS <- function(x, actual, alpha) {
   is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
 }
 
+#' Calculate sharpness for an interval from alpha/2 to 1-alpha/2. Negatively oriented
+#'
+#' @param x A ts_forecast object
+#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+sharpness <- function(x, alpha) {
+  eps <- 1e-6
+  if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
+  l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
+  u <- x$quantiles$x[abs(x$quantiles$q-(1-alpha/2))<eps]
+  if (length(l)==0 | length(u)==0) stop("Requested quantile is not in the forecast's list of quantiles.")
+  sharpness <- u-l
+}
+
+
 # trapezoidal area: (a+b)/2*width
 trapz <- function(width, height) {
   sum(width*(height[-1] + height[1:length(height)-1])/2)

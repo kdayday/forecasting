@@ -131,6 +131,19 @@ test_that("Interval score calculation throws error for bad input", {
   expect_error(IS(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
 })
 
+test_that("Sharpness calculation is correct.", {
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_equal(sharpness(fake_forecast, alpha=0.2), 80)
+})
+
+test_that("Sharpness calculation throws error for bad input", {
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_error(sharpness(fake_forecast, alpha=10), "Alpha.*")
+  expect_error(sharpness(fake_forecast, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
+})
+
 test_that("CRPS estimation is correct", {
   # Squared: 0.04, 0.16, | 0.36, 0.16
   # 0.5*(0.16+0.04) = 0.1; 0.5*(0.36+0.16) + 0.5*(0.16+0.04)= 0.26 + 0.1=0.36

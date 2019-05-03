@@ -242,12 +242,13 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
 #'
 #' @param ts A ts_forecast object
 #' @param tel A vector of the telemetry values
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... optional arguments to equalize_telemetry_forecast_length
-CRPS_avg <-function(ts, tel, ...){
+CRPS_avg <-function(ts, tel, normalize.by=1, ...){
   x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
   forecast_available <- x$fc
-
-  crps_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])))
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  crps_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])/normalize.by[i]))
   return(list(mean=mean(crps_list), min=min(crps_list), max=max(crps_list), sd=stats::sd(crps_list)))
 }
 
@@ -298,36 +299,63 @@ plot_brier <- function(ts, tel, nmem = NA) {
   plot(g)
 }
 
+equalize_normalization_factor_length <- function(normalize.by, tel, ...) {
+  if (length(normalize.by)>1) {
+    return(equalize_telemetry_forecast_length(tel, normalize.by, ...)$fc)
+  } else {
+    return(rep(normalize.by, times=length(tel)))
+  }
+}
+
 #' Get mean absolute error between the forecast median and the actual value
 #'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the MAE value
-
-MAE <-function(ts, tel, ...) {
+MAE <-function(ts, tel, normalize.by=1, ...) {
   medians <- get_quantile_time_series(ts, 50)
   forecast_available <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)$fc
-  res <- equalize_telemetry_forecast_length(tel, medians, ...)
-  medians <- res$fc
-  tel <- res$tel
-  return(mean(abs(medians[forecast_available & !is.na(tel)]-tel[forecast_available & !is.na(tel)]), na.rm = TRUE))
+  x <- equalize_telemetry_forecast_length(tel, medians, ...)
+  medians <- x$fc
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  indices <- forecast_available & !is.na(x$tel)
+  return(mean(abs(medians[indices]-x$tel[indices])/normalize.by[indices], na.rm = TRUE))
 }
 
 #' Get average interval score, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
 #' Characterizes sharpness, with a penalty for reliability
-#' NEED TO EXPLORE THIS. UNSURE OF VALUE OF DOING SIMPLE AVERAGE OVER A HETEROSCEDASTIC PROCESS TO CHARACTERIZE SHARPNESS.
 #'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average IS value
-IS_avg <-function(ts, tel, alpha, ...) {
+IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
   x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
   forecast_available <- x$fc
-  is_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)})
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  is_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)/normalize.by[i]})
   return(list(mean=mean(is_list), min=min(is_list), max=max(is_list), sd=stats::sd(is_list)))
+}
+
+#' Get average sharpness, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
+#' Telemetry isn't used in sharpness, but it is only averaged over times when telemetry is available for direct compatibility with other metrics.
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of telemetry values.
+#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
+#' @param ... additional optional arguments to equalize_telemetry_forecast_length
+#' @return the average sharpness value
+sharpness_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  sharpness_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {sharpness(ts$forecasts[[i]], alpha=alpha)/normalize.by[i]})
+  return(list(mean=mean(sharpness_list), min=min(sharpness_list), max=max(sharpness_list), sd=stats::sd(sharpness_list)))
 }
 
 #' Plot diagonal line diagram of quantiles + observations

@@ -157,6 +157,13 @@ test_that("Extraction of time-series at certain quantile throws error.", {
   expect_error(get_quantile_time_series(ts, 2))
 })
 
+test_that("Equalize normalization factor is correct", {
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=tel, fc=ts)),
+    expect_equal(equalize_normalization_factor_length(3, 1:4), c(3,3,3,3)))
+  with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=tel, fc=ts)),
+            expect_equal(equalize_normalization_factor_length(5:8, 1:4), 5:8))
+})
+
 test_that("Avg CRPS score handles telemetry longer than forecast", {
   tel <- c(25, 30, 35)
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=tel, tel_2_fc=2, translate_forecast_index=identity)),
@@ -208,6 +215,14 @@ test_that("Average interval score calculation handles telemetry longer than fore
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(50, 50, 25, NaN), fc=rep(ts, each=2), tel_2_fc=2,
                                                                                   translate_forecast_index=function(i) {floor((i-1)/2)+1})),
             expect_equal(IS_avg(fake_ts, tel=NA, alpha=0.2, agg=FALSE), list(mean=200/3, min=40, max=80, sd=stats::sd(c(40, 80, 80))))) # 200/3=mean(80, 80, 40)
+})
+
+test_that("Average sharpness score calculation is correct.", {
+  expect_equal(sharpness_avg(ts, tel=1:3, alpha=0.2, normalize.by = c(2, 10, 10)), list(mean=6, min=4, max=8, sd=stats::sd(c(8,4)))) # 6=mean(8, 4)
+})
+
+test_that("Average sharpness score skips times when telemetry is missing.", {
+  expect_equal(sharpness_avg(ts, tel=c(1, NA, 2), alpha=0.2, normalize.by = c(2, 20, 10)), list(mean=4, min=4, max=4, sd=stats::sd(c(4)))) # 6=mean(80, 40)
 })
 
 test_that("Quantile reliability calculation is correct.", {
