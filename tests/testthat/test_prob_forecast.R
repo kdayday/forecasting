@@ -335,12 +335,26 @@ test_that("get_alpha_betas normalization and calculation is correct", {
 
   with_mock(get_poc = function(x, A, ...) return(A),
             get_rho = function(x, ...) return(x),
-            get_gamma = function(x, ...) return(x),
-            out <- get_alpha_betas(fake_x)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
+            get_gamma = function(...) return(2), # gamma is over minimum gamma
+            out <- get_alpha_betas(fake_x))
   expect_equal(out$PoC, PoC)
-  expect_equal(out$alphas, c(0.1, 0.5, 1)^2)
-  expect_equal(out$betas, c(0.1, 0.5, 1)*(1-c(0.1, 0.5, 1)))
+  expect_equal(out$alphas, c(0.1, 0.5, 1)*2)
+  expect_equal(out$betas, 2*(1-c(0.1, 0.5, 1)))
 })
+
+test_that("get_alpha_betas truncates gammas to avoid U distributions", {
+  mp <- 1
+  rho <- c(0.25, 0.75)
+  fake_x <- structure(list(model=list(A0=NA, A1=NA, A2=NA, B0=rho, B1=NA, C0=NA, w=NA, A_transform=NA, B_transform=NA),
+                           max_power=mp, members=rho), class = c("prob_forecast", "prob_1d_bma_forecast"))
+  with_mock(get_poc = function(...) return(NA),
+            get_rho = function(x, B0, ...) return(B0),
+            get_gamma = function(...) return(0.17), # Variance in grey region based on variance of 0.16
+            out <- get_alpha_betas(fake_x))
+  expect_equal(out$alphas, rho/0.75) # gamma pegged to 1/rho or 1/(1-rho)
+  expect_equal(out$betas, (1-rho)/0.75)
+})
+
 
 test_that('1d bma forecast quantile calculation is correct', {
   fake_forecast <- structure(list(max_power=10), class = c("prob_forecast", "prob_1d_bma_forecast"))
