@@ -294,7 +294,8 @@ plot_brier <- function(ts, tel, nmem = NA) {
     rects <- data.frame(xstart=xstart[1:length(xend)], xend = xend)
     g <- g + ggplot2::geom_rect(data = rects, mapping=ggplot2::aes(xmin = xstart, xmax = xend, ymin = -Inf, ymax = Inf), fill = "gray", inherit.aes = FALSE, alpha=0.4)
   }
-  g <- g + ggplot2::geom_point()
+  g <- g + ggplot2::geom_point() +
+        ggplot2::geom_line(data=data.frame(x=q, y=q/100*(100-q)/100))
 
   plot(g)
 }
