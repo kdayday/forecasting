@@ -583,7 +583,7 @@ get_alpha_betas <- function(x) {
    # Truncate gammas if needed at a J or reverse-J shape to avoid U-shaped distributions
    # variance is inversely proportional to gamma, so gamma min leads to variance max
    gamma_min <- sapply(rhos, function(r) ifelse(r<=0.5, 1/(1-r), 1/r))
-   gammas[gammas < gamma_min] <- gamma_min[gammas < gamma_min]
+   gammas[gammas < gamma_min & !is.na(gammas)] <- gamma_min[gammas < gamma_min & !is.na(gammas)]
 
    alphas <- rhos * gammas
    betas <- gammas * (1-rhos)
