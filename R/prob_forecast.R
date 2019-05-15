@@ -608,29 +608,35 @@ get_beta_distribution_geometry_code <- function(alpha, beta) {
 
 # Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
 # Probability density has not been re-adjusted for the clipping threshold, which tweaks things around the clipping threshold
-plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
+plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F) {
 
   model <- get_discrete_continuous_model(x)
 
   # Avoid Inf's on the boundaries
   xrange <- 2:(length(model$xseq)-1)
-  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta_approx[xrange]), model$PoC))*1.1, ymax)
+  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta_approx[xrange]), model$PoC))*1.1*ifelse(normalize, x$max_power, 1), ymax)
 
-  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta_approx[xrange]), mapping=ggplot2::aes(x=x, y=y)) +
+  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
+                                  y=model$dbeta_approx[xrange]*ifelse(normalize, x$max_power, 1)),
+                       mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line(size=1.3) +
     # Lollipop style segment for discrete component
-    ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=1.3) +
-    ggplot2::geom_point(data=data.frame(x=c(x$max_power), y=c(model$PoC)), size=4, col="black", fill="black", shape=21) +
-    ggplot2::xlab("Power [MW]") +
+    ggplot2::geom_line(data=data.frame(x=c(ifelse(normalize, 1, x$max_power), ifelse(normalize, 1, x$max_power)),
+                                       y=c(0,model$PoC)), size=1.3) +
+    ggplot2::geom_point(data=data.frame(x=c(ifelse(normalize, 1, x$max_power)), y=c(model$PoC)), size=4, col="black", fill="black", shape=21) +
+    ggplot2::xlab(ifelse(normalize, "Normalized Power [MW]", "Power [MW]")) +
     ggplot2::ylab("Probability Density") +
-    ggplot2::geom_point(data=data.frame(x=x$members, y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
+    ggplot2::geom_point(data=data.frame(x=x$members/ifelse(normalize, x$max_power, 1), y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
 
   if (!is.na(actual)) {
-    g <- g + ggplot2::geom_line(data=data.frame(x=c(actual, actual), y=c(0, ymax)), linetype="dashed")
+    g <- g + ggplot2::geom_line(data=data.frame(x=c(actual/ifelse(normalize, x$max_power, 1), actual/ifelse(normalize, x$max_power, 1)),
+                                                y=c(0, ymax)), linetype="dashed")
   }
 
   for (i in seq_len(dim(model$members$dbeta_approx)[2])) {
-    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta_approx[xrange,i]), mapping=ggplot2::aes(x=x, y=y), col="black")
+    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
+                                           y=model$members$dbeta_approx[xrange,i]*ifelse(normalize, x$max_power, 1)),
+                                mapping=ggplot2::aes(x=x, y=y), col="black")
   }
 
   plot(g)
