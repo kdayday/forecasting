@@ -530,7 +530,7 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001
 #' @param xseq Vector of x values in [0,1] to evaluate
 #' @param discrete Boolean of whether to return density with a discrete component (approximate) or with the continuous estimation (congruent with CDF)
 #' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
-get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001), discrete=F) {
+get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.0001), discrete=F) {
   i.thresh <- max(which(xseq < x$model$percent_clipping_threshold))
 
   shape_params <- get_alpha_betas(x)
