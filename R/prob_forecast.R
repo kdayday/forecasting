@@ -528,8 +528,9 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001
 
 #' @param x prob_1d_bma_forecast object
 #' @param xseq Vector of x values in [0,1] to evaluate
+#' @param discrete Boolean of whether to return density with a discrete component (approximate) or with the continuous estimation (congruent with CDF)
 #' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
-get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
+get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001), discrete=F) {
   i.thresh <- max(which(xseq < x$model$percent_clipping_threshold))
 
   shape_params <- get_alpha_betas(x)
@@ -544,8 +545,8 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
                       MoreArgs = list(xseq=xseq, i.thresh=i.thresh))
 
   # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
-  dbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::dbeta(xseq, a, b)),
-                      shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
+  dbeta_seq <- mapply(dbeta_subfunction, shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w,
+                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh, discrete=discrete))
 
   # Calculate overall distribution
   PoC_total <- sum(x$model$w*shape_params$PoC, na.rm=T)
@@ -555,12 +556,11 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
   if (max(pbeta_total) > 1) pbeta_total <- pbeta_total/max(pbeta_total)
 
   # Invert normalization of beta components back to [0, max power]
-  return(list(PoC=PoC_total, dbeta_approx=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
-              members=list(PoC=shape_params$PoC, dbeta_approx=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
+  return(list(PoC=PoC_total, dbeta=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
+              members=list(PoC=shape_params$PoC, dbeta=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
 }
 
-# Get *estimate* of beta probability density for illustrative purposes.
-# Does not account tweaks around the clipping threshold
+# Get cumulative distribution for individual ensemble member
 pbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh) {
   pb <- stats::pbeta(xseq[1:i.thresh], a, b)
   pb.continuous <- (1-poc)*pb/max(pb)
@@ -569,6 +569,23 @@ pbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh) {
   # Model discrete component as a linear increase over the clipping bandwidth: y = mx + b, where b=1-poc, m=poc/clipping bandwidth
   pb.discrete <- (1-poc) + seq_along(xseq[(i.thresh+1):length(xseq)])*diff(xseq)[1]*poc/dx
   return(w * c(pb.continuous, pb.discrete))
+}
+
+# Get probability density for individual ensemble member
+# Includes continuous estimation of discrete component, starting at the threshold and extending to 1
+dbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh, discrete) {
+  if (discrete) {
+    return((1-poc)*w*stats::dbeta(xseq, a, b))
+  } else {
+    pb_max <- stats::pbeta(xseq[i.thresh], a, b)
+    db <- stats::dbeta(xseq[1:i.thresh], a, b)
+    db.continuous <- (1-poc)*db/pb_max
+    dx <- xseq[length(xseq)]-xseq[i.thresh]
+
+    # Model discrete component as a linear increase over the clipping bandwidth: y = mx + b, where b=1-poc, m=poc/clipping bandwidth
+    db.discrete <- poc/(xseq[length(xseq)]-xseq[i.thresh]) * rep(1, times=length(xseq[(i.thresh+1):length(xseq)]))
+    return(w * c(db.continuous, db.discrete))
+  }
 }
 
 get_alpha_betas <- function(x) {
@@ -606,36 +623,38 @@ get_beta_distribution_geometry_code <- function(alpha, beta) {
   else stop(paste("uncoded combination: alpha=", alpha, ", beta=", beta, sep=''))
 }
 
-# Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
-# Probability density has not been re-adjusted for the clipping threshold, which tweaks things around the clipping threshold
-plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F) {
+#' Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
+#' @param discrete Boolean on whether to plot a discrete component as approximation or the continuous equivalent above the clipping threshold
+plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
 
-  model <- get_discrete_continuous_model(x)
+  model <- get_discrete_continuous_model(x, discrete=discrete)
 
   # Avoid Inf's on the boundaries
   xrange <- 2:(length(model$xseq)-1)
-  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta_approx[xrange]), model$PoC))*1.1*ifelse(normalize, x$max_power, 1), ymax)
+  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta[xrange])*ifelse(normalize, x$max_power, 1), model$PoC))*1.1, ymax)
 
   g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
-                                  y=model$dbeta_approx[xrange]*ifelse(normalize, x$max_power, 1)),
+                                  y=model$dbeta[xrange]*ifelse(normalize, x$max_power, 1)),
                        mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line(size=1.3) +
-    # Lollipop style segment for discrete component
-    ggplot2::geom_line(data=data.frame(x=c(ifelse(normalize, 1, x$max_power), ifelse(normalize, 1, x$max_power)),
-                                       y=c(0,model$PoC)), size=1.3) +
-    ggplot2::geom_point(data=data.frame(x=c(ifelse(normalize, 1, x$max_power)), y=c(model$PoC)), size=4, col="black", fill="black", shape=21) +
     ggplot2::xlab(ifelse(normalize, "Normalized Power [MW]", "Power [MW]")) +
     ggplot2::ylab("Probability Density") +
     ggplot2::geom_point(data=data.frame(x=x$members/ifelse(normalize, x$max_power, 1), y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
+  if (discrete) {
+    # Lollipop style segment for discrete component
+    g <- g + ggplot2::geom_line(data=data.frame(x=c(ifelse(normalize, 1, x$max_power), ifelse(normalize, 1, x$max_power)),
+                                       y=c(0,model$PoC)), size=1.3) +
+      ggplot2::geom_point(data=data.frame(x=c(ifelse(normalize, 1, x$max_power)), y=c(model$PoC)), size=4, col="black", fill="black", shape=21)
+  }
 
   if (!is.na(actual)) {
     g <- g + ggplot2::geom_line(data=data.frame(x=c(actual/ifelse(normalize, x$max_power, 1), actual/ifelse(normalize, x$max_power, 1)),
                                                 y=c(0, ymax)), linetype="dashed")
   }
 
-  for (i in seq_len(dim(model$members$dbeta_approx)[2])) {
+  for (i in seq_len(dim(model$members$dbeta)[2])) {
     g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
-                                           y=model$members$dbeta_approx[xrange,i]*ifelse(normalize, x$max_power, 1)),
+                                           y=model$members$dbeta[xrange,i]*ifelse(normalize, x$max_power, 1)),
                                 mapping=ggplot2::aes(x=x, y=y), col="black")
   }
 

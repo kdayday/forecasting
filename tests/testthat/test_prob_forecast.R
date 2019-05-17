@@ -284,7 +284,7 @@ test_that("1D BMA forecast discrete-continuous model weighting & summation is co
                            max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
 
   with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
-            dbeta = function(xseq, a, b) return(xseq*(a)),
+            dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
             pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
             out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
   expect_equal(out$members$PoC, PoC)
@@ -307,7 +307,7 @@ test_that("1D BMA forecast discrete-continuous model handles missing forecast me
                            max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
 
   with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
-            dbeta = function(xseq, a, b) return(xseq*(a)),
+            dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
             pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
             out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
   expect_equal(out$members$PoC, PoC)
@@ -324,6 +324,24 @@ test_that("pbeta subfunction calculation handles minimum threshold resolution", 
 test_that("pbeta subfunction calculation handles larger threshold resolution", {
   with_mock(pbeta=function(xseq, a, b) return(xseq),
             expect_equal(pbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9), c(seq(0, 0.6, length.out = 9), 0.8, 1)/2))
+})
+
+test_that("dbeta subfunction calculation handles minimum threshold resolution", {
+  with_mock(dbeta=function(xseq, a, b) return(xseq),
+            pbeta=function(x, a, b) return(x),
+            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=F), c(seq(0, 0.6, length.out = 10), 0.4/0.1)/2))
+})
+
+test_that("pbeta subfunction calculation handles larger threshold resolution", {
+  with_mock(dbeta=function(xseq, a, b) return(xseq),
+            pbeta=function(x, a, b) return(x),
+            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9, discrete=F), c(seq(0, 0.6, length.out = 9), 0.4/0.2, 0.4/0.2)/2))
+})
+
+test_that("dbeta subfunction calculation handles discrete option", {
+  with_mock(dbeta=function(xseq, a, b) return(xseq),
+            pbeta=function(xseq, a, b) return(max(xseq)),
+            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=T), seq(0, 0.6, length.out = 11)/2))
 })
 
 test_that("get_alpha_betas normalization and calculation is correct", {
