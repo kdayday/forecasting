@@ -43,12 +43,12 @@ get_netcdf_forecast_data <- function(fname, members, sites, lead_time, date_star
   dim_counts <- c(ndays, ts_per_day, 1, 1, 1)
 
   # Open file
-  nc <- nc_open(fname)
+  nc <- ncdf4::nc_open(fname)
 
   # Get a matrix for this member and site
   member_data <- function(member, site) {
     dim_starts <- c(start_day,1, site, lead_time, member)
-    return(ncvar_get(nc, varid=vname, start=dim_starts, count=dim_counts))
+    return(ncdf4::ncvar_get(nc, varid=vname, start=dim_starts, count=dim_counts))
   }
 
   # Get a [member x day x hour] matrix at this site
@@ -61,7 +61,7 @@ get_netcdf_forecast_data <- function(fname, members, sites, lead_time, date_star
   data <- sapply(sites, site_data, simplify="array")
 
   # Close the file!
-  nc_close(nc)
+  ncdf4::nc_close(nc)
 
   # Return in dimensions [site x member x time]
   return(array(aperm(data, c(4, 3, 2, 1)), dim=c(length(sites), length(members), ndays*ts_per_day)))
@@ -87,16 +87,16 @@ get_netcdf_telemetry_data <- function(fname, sites, date_start, date_end,
   dim_counts <- c(ndays, ts_per_day, 1)
 
   # Open file
-  nc <- nc_open(fname)
+  nc <- ncdf4::nc_open(fname)
 
   site_data <- function(site) {
-    return(ncvar_get(nc, varid=vname, start=c(start_day,1,site), count=dim_counts))
+    return(ncdf4::ncvar_get(nc, varid=vname, start=c(start_day,1,site), count=dim_counts))
   }
 
   data <- sapply(sites, site_data, simplify="array")
 
   # Close the file!
-  nc_close(nc)
+  ncdf4::nc_close(nc)
 
   # Return in dimensions [site x time]
   return(array(aperm(data, c(3,2,1)), dim=c(length(sites), ndays*ts_per_day)))
