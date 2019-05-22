@@ -24,6 +24,20 @@ IS <- function(x, actual, alpha) {
   is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
 }
 
+#' Calculate sharpness for an interval from alpha/2 to 1-alpha/2. Negatively oriented
+#'
+#' @param x A ts_forecast object
+#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+sharpness <- function(x, alpha) {
+  eps <- 1e-6
+  if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
+  l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
+  u <- x$quantiles$x[abs(x$quantiles$q-(1-alpha/2))<eps]
+  if (length(l)==0 | length(u)==0) stop("Requested quantile is not in the forecast's list of quantiles.")
+  sharpness <- u-l
+}
+
+
 # trapezoidal area: (a+b)/2*width
 trapz <- function(width, height) {
   sum(width*(height[-1] + height[1:length(height)-1])/2)
@@ -37,15 +51,59 @@ trapz <- function(width, height) {
 CRPS <- function(x, tel) {
   y <- x$quantiles$x
 
-  # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation
-  crps <- trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2)
+  # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation,
+  # plus one of two optional rectangles representing additional CRPS area if the telemetry was an outlier outside the forecasted quantiles
+  crps <- ifelse(tel < min(y), min(y)-tel, 0) + # lower outlier rectangular area of height 1 (implied)
+          trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + # Area below heaviside step
+          trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2) + # Area above heaviside step
+          ifelse(tel > max(y), tel-max(y), 0)# upper outlier rectangular area of height 1 (implied)
 }
 
 #' Plot probabilistic forecast's quantiles
 plot.prob_forecast <- function(x) {
-  plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Density',
-       main='Quantiles', sub = paste("Location: ", x$location, ", Time:", x$time))
+  plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Distribution',
+      sub = paste("Location: ", x$location, ", Time:", x$time))
 }
+
+#' Plot probabilistic forecast's CRPS illustration
+plot_crps <- function(x, tel) {
+  if (!is.prob_forecast(x)) stop("x must be a prob_forecast object to plot CRPS")
+  y <- x$quantiles$x
+
+  if (tel < min(y)) {
+    upper_area.x <- c(tel, min(y), x$quantiles$x[y >= tel])
+    upper_area.y <- c(1, 1, (x$quantiles$q[y >= tel]-1)^2)
+  } else {
+    upper_area.x <- x$quantiles$x[y >= tel]
+    upper_area.y <- (x$quantiles$q[y >= tel]-1)^2
+  }
+  if (tel > max(y)) {
+    lower_area.x <- c(x$quantiles$x[y <= tel], max(y), tel)
+    lower_area.y <- c(x$quantiles$q[y <= tel]^2, 1, 1)
+  } else {
+    lower_area.x <- x$quantiles$x[y <= tel]
+    lower_area.y <- x$quantiles$q[y <= tel]^2
+  }
+
+  g <- ggplot2::ggplot(data.frame(x=x$quantiles$x, y=x$quantiles$q), mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::theme_light() +
+    ggplot2::geom_line(size=1.3)
+  if (any(y<=tel)) {
+    g <- g + ggplot2::geom_ribbon(data=data.frame(x=lower_area.x, y=lower_area.y), mapping=ggplot2::aes(ymin=0, ymax=y), fill="gray90", col="gray60")
+  }
+    if (any(y>=tel)) {
+    g <- g + ggplot2::geom_ribbon(data=data.frame(x=upper_area.x, y=upper_area.y), mapping=ggplot2::aes(ymin=1-y, ymax=1), fill="gray90", col="gray60")
+  }
+  g <- g + ggplot2::geom_line(data=data.frame(x=c(0, tel), y=c(0,0)), size=1.3, col='darkolivegreen4') +
+    ggplot2::geom_line(data=data.frame(x=c(tel, tel), y=c(0,1)), size=1.3, col='darkolivegreen4') +
+    ggplot2::geom_line(data=data.frame(x=c(tel, max(c(lower_area.x, upper_area.x))), y=c(1,1)), size=1.3, col='darkolivegreen4', linetype="solid") +
+    ggplot2::xlab("Power [MW]") +
+    ggplot2::ylab("Cumulative Distribution") +
+    ggplot2::ggtitle(paste("CRPS:", round(CRPS(x, tel), 2), "MW"))
+
+  plot(g)
+}
+
 
 #' Check probabilistic forecast class
 is.prob_forecast <- function(x) inherits(x, "prob_forecast")
@@ -364,13 +422,14 @@ qc_input <- function(dat) {
 #' @param data.input A numeric vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
+#' @param max_power Maximum power for normalizing forecast to [0,1]
 #' @return A 1-dimensional probabilistic forecast object
-prob_1d_rank_forecast <- function(data.input, location, time, ...) {
+prob_1d_rank_forecast <- function(data.input, location, time, max_power, ...) {
   members <- qc_input(data.input)
 
   # Initialize probabilistic forecast
   dat <- list(location = location,
-              rank_quantiles = list(x=sort(members), y=(0:(length(members)-1))/(length(members)-1)),
+              rank_quantiles = list(x=c(0, sort(members), max_power), y=(0:(length(members)+1))/(length(members)+1)),
               time = time,
               d = 1)
 
@@ -469,8 +528,9 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001
 
 #' @param x prob_1d_bma_forecast object
 #' @param xseq Vector of x values in [0,1] to evaluate
+#' @param discrete Boolean of whether to return density with a discrete component (approximate) or with the continuous estimation (congruent with CDF)
 #' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
-get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
+get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.0001), discrete=F) {
   i.thresh <- max(which(xseq < x$model$percent_clipping_threshold))
 
   shape_params <- get_alpha_betas(x)
@@ -485,8 +545,8 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
                       MoreArgs = list(xseq=xseq, i.thresh=i.thresh))
 
   # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
-  dbeta_seq <- mapply(function(a, b, poc, w, xseq) return((1-poc)*w*stats::dbeta(xseq, a, b)),
-                      shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w, MoreArgs = list(xseq=xseq))
+  dbeta_seq <- mapply(dbeta_subfunction, shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w,
+                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh, discrete=discrete))
 
   # Calculate overall distribution
   PoC_total <- sum(x$model$w*shape_params$PoC, na.rm=T)
@@ -496,12 +556,11 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.001)) {
   if (max(pbeta_total) > 1) pbeta_total <- pbeta_total/max(pbeta_total)
 
   # Invert normalization of beta components back to [0, max power]
-  return(list(PoC=PoC_total, dbeta_approx=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
-              members=list(PoC=shape_params$PoC, dbeta_approx=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
+  return(list(PoC=PoC_total, dbeta=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
+              members=list(PoC=shape_params$PoC, dbeta=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
 }
 
-# Get *estimate* of beta probability density for illustrative purposes.
-# Does not account tweaks around the clipping threshold
+# Get cumulative distribution for individual ensemble member
 pbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh) {
   pb <- stats::pbeta(xseq[1:i.thresh], a, b)
   pb.continuous <- (1-poc)*pb/max(pb)
@@ -512,6 +571,23 @@ pbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh) {
   return(w * c(pb.continuous, pb.discrete))
 }
 
+# Get probability density for individual ensemble member
+# Includes continuous estimation of discrete component, starting at the threshold and extending to 1
+dbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh, discrete) {
+  if (discrete) {
+    return((1-poc)*w*stats::dbeta(xseq, a, b))
+  } else {
+    pb_max <- stats::pbeta(xseq[i.thresh], a, b)
+    db <- stats::dbeta(xseq[1:i.thresh], a, b)
+    db.continuous <- (1-poc)*db/pb_max
+    dx <- xseq[length(xseq)]-xseq[i.thresh]
+
+    # Model discrete component as a linear increase over the clipping bandwidth: y = mx + b, where b=1-poc, m=poc/clipping bandwidth
+    db.discrete <- poc/(xseq[length(xseq)]-xseq[i.thresh]) * rep(1, times=length(xseq[(i.thresh+1):length(xseq)]))
+    return(w * c(db.continuous, db.discrete))
+  }
+}
+
 get_alpha_betas <- function(x) {
    # Normalize to [0,1]
    members.norm <- sapply(x$members, function(m) ifelse(m <= x$max_power, m/x$max_power, 1))
@@ -520,6 +596,11 @@ get_alpha_betas <- function(x) {
    PoC <- mapply(get_poc, members.norm, x$model$A0, x$model$A1, x$model$A2, MoreArgs=list(A_transform=x$model$A_transform))
    rhos <- mapply(get_rho, members.norm, x$model$B0, x$model$B1, MoreArgs = list(B_transform=x$model$B_transform))
    gammas <- mapply(get_gamma, rhos, MoreArgs = list(C0=x$model$C0))
+
+   # Truncate gammas if needed at a J or reverse-J shape to avoid U-shaped distributions
+   # variance is inversely proportional to gamma, so gamma min leads to variance max
+   gamma_min <- sapply(rhos, function(r) ifelse(r<=0.5, 1/(1-r), 1/r))
+   gammas[gammas < gamma_min & !is.na(gammas)] <- gamma_min[gammas < gamma_min & !is.na(gammas)]
 
    alphas <- rhos * gammas
    betas <- gammas * (1-rhos)
@@ -542,31 +623,39 @@ get_beta_distribution_geometry_code <- function(alpha, beta) {
   else stop(paste("uncoded combination: alpha=", alpha, ", beta=", beta, sep=''))
 }
 
-# Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
-# Probability density has not been re-adjusted for the clipping threshold, which tweaks things around the clipping threshold
-plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA) {
+#' Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
+#' @param discrete Boolean on whether to plot a discrete component as approximation or the continuous equivalent above the clipping threshold
+plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
 
-  model <- get_discrete_continuous_model(x)
+  model <- get_discrete_continuous_model(x, discrete=discrete)
 
   # Avoid Inf's on the boundaries
   xrange <- 2:(length(model$xseq)-1)
-  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta_approx[xrange]), model$PoC))*1.1, ymax)
+  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta[xrange])*ifelse(normalize, x$max_power, 1), model$PoC))*1.1, ymax)
 
-  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange], y=model$dbeta_approx[xrange]), mapping=ggplot2::aes(x=x, y=y)) +
+  g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
+                                  y=model$dbeta[xrange]*ifelse(normalize, x$max_power, 1)),
+                       mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line(size=1.3) +
+    ggplot2::xlab(ifelse(normalize, "Normalized Power [MW]", "Power [MW]")) +
+    ggplot2::ylab("Probability Density") +
+    ggplot2::geom_point(data=data.frame(x=x$members/ifelse(normalize, x$max_power, 1), y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
+  if (discrete) {
     # Lollipop style segment for discrete component
-    ggplot2::geom_line(data=data.frame(x=c(x$max_power, x$max_power), y=c(0,model$PoC)), size=1.3) +
-    ggplot2::geom_point(data=data.frame(x=c(x$max_power), y=c(model$PoC)), size=4, col="black", fill="black", shape=21) +
-    ggplot2::xlab("Power [MW]") +
-    ggplot2::ylab("Probability") +
-    ggplot2::geom_point(data=data.frame(x=x$members, y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
-
-  if (!is.na(actual)) {
-    g <- g + ggplot2::geom_line(data=data.frame(x=c(actual, actual), y=c(0, ymax)), linetype="dashed")
+    g <- g + ggplot2::geom_line(data=data.frame(x=c(ifelse(normalize, 1, x$max_power), ifelse(normalize, 1, x$max_power)),
+                                       y=c(0,model$PoC)), size=1.3) +
+      ggplot2::geom_point(data=data.frame(x=c(ifelse(normalize, 1, x$max_power)), y=c(model$PoC)), size=4, col="black", fill="black", shape=21)
   }
 
-  for (i in seq_len(dim(model$members$dbeta_approx)[2])) {
-    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange], y=model$members$dbeta_approx[xrange,i]), mapping=ggplot2::aes(x=x, y=y), col="black")
+  if (!is.na(actual)) {
+    g <- g + ggplot2::geom_line(data=data.frame(x=c(actual/ifelse(normalize, x$max_power, 1), actual/ifelse(normalize, x$max_power, 1)),
+                                                y=c(0, ymax)), linetype="dashed")
+  }
+
+  for (i in seq_len(dim(model$members$dbeta)[2])) {
+    g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
+                                           y=model$members$dbeta[xrange,i]*ifelse(normalize, x$max_power, 1)),
+                                mapping=ggplot2::aes(x=x, y=y), col="black")
   }
 
   plot(g)

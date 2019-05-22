@@ -28,15 +28,17 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
   # 2. linear regression for b's.
   mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel, form=lm_formula, B_transform = B_transform,
                                                                      percent_clipping_threshold=percent_clipping_threshold))
+  # Force intercept to 0 if it is not included in the model
   B0 <- sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
-  B1 <- sapply(mem_mean_models, function(m) return(m$coefficients["x", "Estimate"]))
+  # Force slope NA if it is missing -- this can happen when the member training data is always 0, returning in singularities in the glm fit.
+  B1 <- sapply(mem_mean_models, function(m) return(ifelse("x" %in% rownames(m$coefficients), m$coefficients["x", "Estimate"], NA)))
 
   fit_statistics <- data.frame("A0 p-value"=sapply(mem_discrete_models, function(m) return(unname(m$prob["(Intercept)"]))),
                                "A1 p-value"=sapply(mem_discrete_models, function(m) return(unname(m$prob["x"]))),
                                "A AIC"=sapply(mem_discrete_models, function(m) return(m$aic)),
                                "B0 p-value"=sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Pr(>|t|)"], NA))),
-                               "B1 p-value"=sapply(mem_mean_models, function(m) return(m$coefficients["x", "Pr(>|t|)"])),
-                               "B r-squared"=sapply(mem_mean_models, function(m) return(m$r.squared)))
+                               "B1 p-value"=sapply(mem_mean_models, function(m) return(ifelse("x" %in% rownames(m$coefficients), m$coefficients["x", "Pr(>|t|)"], NA))),
+                               "B r-squared"=sapply(mem_mean_models, function(m) return(m$r.squared))) # If singularities occur in fitting, r.squared value with be 0.
 
   # 3. ME algorithm for w's and c's
   # In future, the above could be expanded to have unique site values. For now, matrices are expanded to arrays assuming a "single" site (i.e., global values).
@@ -97,9 +99,15 @@ get_lr <- function(fc, tel, form, A_transform, percent_clipping_threshold){
 #' @param percent_clipping_threshold Percentage threshold for determining if clipping is occurring
 #' @return Summary of the lm model
 get_lm <- function(fc, tel, form, B_transform, percent_clipping_threshold){
-  unclipped <- tel < percent_clipping_threshold
+  # Only grab values that are unclipped and that have both forecast and telemetry available
+  unclipped <- tel < percent_clipping_threshold & !is.na(tel) & !is.na(fc)
   if (typeof(B_transform)=="closure") fc <- sapply(fc, FUN = B_transform)
-  return(summary(lm(form, data=data.frame(x=fc[unclipped], y=tel[unclipped]))))
+  # Set unclipped component values if there no non-NA unclipped values
+  # If there is only one point, it will get the slope of that point.
+  if (sum(unclipped, na.rm=T)==0) {
+    coefficients <- matrix(c(NA, NA, NA, NA), ncol = 2, dimnames=list(c("(Intercept)", "x"), c("Estimate", "Pr(>|t|)")))
+    return(list(r.squared=NA, coefficients=coefficients))
+  } else return(summary(lm(form, data=data.frame(x=fc[unclipped], y=tel[unclipped]))))
 }
 
 # Expectation-maximization function, modified from code courtesy of Will Kleiber
@@ -172,8 +180,10 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_c
   # new weights and variance deflation
   # n members = dim(FCST)[3]
   w.new <- sapply(1:dim(FCST)[3], function(k) {ifelse(any(!is.na(z[,,k])), mean(z[,,k], na.rm=TRUE), 0)})
+  # Minor adjustment for rounding error so weights sum to 1
+  w.new <- w.new/sum(w.new, na.rm=T)
 
-  ## CM-1 step
+  ## CM-2 step
   # Using the new w estimate, re-optimize C0
   if (count%%CM2.iter == 0) {
     opt <- optimize(get_log_lik, interval=c(0, 0.25), w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform,
@@ -193,12 +203,11 @@ e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_
   # Re-calculate beta density estimates based on current estimate for C0
   rhos <- array(mapply(get_rho, FCST, B0, B1, MoreArgs = list(B_transform=B_transform)), dim(FCST))
   gammas <- array(mapply(get_gamma, rhos, MoreArgs = list(C0=C0)), dim(FCST))
-  # Using linear indexing, OBS gets recycled across members
-  db <- array(mapply(dbeta_gamma_rho, OBS, gammas, rhos), dim(FCST))
 
   # z is an array with the first entry being day, second entry site, third entry forecast
   # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
-  z_num <-  array(mapply(get_z, OBS, PoC, db, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(percent_clipping_threshold=percent_clipping_threshold)), dim(FCST)) # Linear indexing, OBS is recycled across members, w explicitly expanded
+  # Linear indexing, OBS is recycled across members, w explicitly expanded
+  z_num <-  array(mapply(get_weighted_probability, OBS, PoC, gammas, rhos, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(percent_clipping_threshold=percent_clipping_threshold)), dim(FCST))
 
   # sumz is weighted sum of density functions across the members. Rows are single training days, columns are sites
   sumz <- apply(z_num, MARGIN=c(1,2), FUN=function(z) ifelse(all(is.na(z)), NA, sum(z, na.rm=T))) # If all members are missing, return NA; else sum the others.
@@ -212,13 +221,20 @@ get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clip
   return(sum(log(sumz), na.rm=T))
 }
 
-# Get z for single instance
+# Get z=weighted probability for single instance
 # Returns NA for missing values and observations exactly at 0
-# density is (PoC)*1[obs==1] + (1-PoC)*Beta(obs,a,b)*1[obs < 1]
-# Uses tolerance to determine if obs == 1
-get_z <- function(OBS, PoC, db, w, percent_clipping_threshold) {
+# Defines clipping with a percentage threshold, lambda
+# density is (PoC/(1-lambda))*1[obs>=lambda] + ((1-PoC)/CDF(lambda))*Beta(obs,a,b)*1[obs < lambda]
+get_weighted_probability <- function(OBS, PoC, gamma, rho, w, percent_clipping_threshold) {
   if (is.na(OBS) | OBS==0) {return(NA)}
-  else return(ifelse(OBS >= percent_clipping_threshold, w*PoC, w*(1-PoC)*db))
+  if (OBS >= percent_clipping_threshold) return(w*PoC/(1-percent_clipping_threshold))
+  else {
+    alpha <- rho * gamma
+    beta <- gamma * (1-rho)
+    db <- stats::dbeta(OBS, alpha, beta)
+    threshold_CD <- stats::pbeta(percent_clipping_threshold, alpha, beta) # Scaling factor: cumulative density at the threshold
+    return((w*(1-PoC)/threshold_CD)*db)
+  }
 }
 
 # Get PoC (probability of clipping) for single instance
@@ -246,6 +262,8 @@ get_rho <- function(FCST, B0, B1, B_transform=NA) {
   # Truncate mu just below 1, useful for those ensemble members that end up with positive B1
   if (mu >= 1)
       mu <- 1-1e-6
+  if (mu <= 0 )
+      mu <- 1e-6
   return(mu)
 }
 

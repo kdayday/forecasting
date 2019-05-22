@@ -7,9 +7,10 @@
 #' @param scale One of 'site', 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
 #' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
 #' @param ... optional arguments to the prob_forecast object
-ts_forecast <- function(x, start_time, time_step, scale, location, method, MoreTSArgs=NA, ...) {
+ts_forecast <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
   # Check inputs
   if (!is.array(x)) stop("Bad input. x must be an array.")
   if (!((length(dim(x))==2 & tolower(scale) %in% c("site", "s")) | (length(dim(x))==3 & tolower(scale) %in% c("region", "total", "r", "t")))){
@@ -17,7 +18,7 @@ ts_forecast <- function(x, start_time, time_step, scale, location, method, MoreT
   }
   if (any(names(MoreTSArgs) %in% c("location", "time"))) stop("MoreTSArgs may not include location or time, which are reserved names.")
 
-  sun_up <- apply(x, MARGIN=1, FUN=check_sunup)
+  sun_up <- apply(x, MARGIN=1, FUN=check_sunup, sun_up_threshold=sun_up_threshold)
   forecasts <- calc_forecasts(x, sun_up, start_time=start_time, time_step=time_step, scale=scale, location=location,
                               method=method, MoreTSArgs=MoreTSArgs, ...)
 
@@ -35,8 +36,8 @@ ts_forecast <- function(x, start_time, time_step, scale, location, method, MoreT
 #'
 #' @param x A matrix
 #' @return A boolean
-check_sunup <- function(x){
-  return(any(x>0, na.rm=TRUE))
+check_sunup <- function(x, sun_up_threshold=0.5){
+  return(any(x>=sun_up_threshold, na.rm=TRUE))
 }
 
 #' Calculate a time series list of power forecasts.
@@ -56,19 +57,25 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
   class_type <- get_forecast_class(scale, method)
   sub_func <- function(i, time, sun_up){
     if (sun_up) {
-      # If additional time-series arguments are provided, this time points arguments are added to the list of optional arguments
-      if (class_type$dim == '1') { # Can't use ifelse function or it will just return the first value
-        args <- list(data.input=x[i,], location=location, time=time)
-      } else {
-        args <- list(data.input=x[i,,], location=location, time=time)
-      }
+      forecast <- tryCatch({
+        # If additional time-series arguments are provided, this time points arguments are added to the list of optional arguments
+        if (class_type$dim == '1') { # Can't use ifelse function or it will just return the first value
+          args <- list(data.input=x[i,], location=location, time=time)
+        } else {
+          args <- list(data.input=x[i,,], location=location, time=time)
+        }
 
-      # Doing this manually to ensure list elements are coerced into a different type
-      for (name in names(list(...))) {args[[name]] <- list(...)[[name]]}
-      moreargs <- sapply(names(MoreTSArgs), FUN=function(name) return(name=MoreTSArgs[[name]][[i]]), simplify=F)
-      for (name in names(moreargs)) {args[[name]] <- moreargs[[name]]}
+        # Doing this manually to ensure list elements are coerced into a different type
+        for (name in names(list(...))) {args[[name]] <- list(...)[[name]]}
+        moreargs <- sapply(names(MoreTSArgs), FUN=function(name) return(name=MoreTSArgs[[name]][[i]]), simplify=F)
+        for (name in names(moreargs)) {args[[name]] <- moreargs[[name]]}
 
-      return(do.call(class_type$class, args))
+        return(do.call(class_type$class, args))
+      }, error = function(e) {
+        e$message <- paste(e$message, "in forecasting time", time, "for location", location)
+        stop(e)
+      })
+      return(forecast)
     } else {return(NA)}}
   return(mapply(sub_func, seq_len(dim(x)[1]), start_time + (seq_len(dim(x)[1])-1)*lubridate::dhours(time_step), sun_up, SIMPLIFY=FALSE))
 }
@@ -120,7 +127,7 @@ plot.ts_forecast <- function(x, ..., tel=NA) {
       plotdata[,i] <- x$forecasts[[i]]$quantiles$x
     } else plotdata[,i] <- 0
   }
-  graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Aggregate power [W]")
+  graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Power [MW]")
   fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
                rlab=NULL, start=x$time_step, frequency=1/x$time_step)
   if (any(!is.na(tel))) {
@@ -139,7 +146,7 @@ get_quantile_time_series <- function(x, alpha) {
   timeseries <- sapply(x$forecasts, FUN=function(forecast, q) {
     if (is.prob_forecast(forecast)){v <- forecast$quantiles$x[which(abs(forecast$quantiles$q-q)<eps)]
       if (length(v)==0) stop(paste(alpha,'quantile not available')) else return(v)}
-    else return(0)},
+    else return(NA)},
     q=q)
   return(timeseries)
 }
@@ -208,6 +215,7 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
   res <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
   sun_up <- res$fc
   tel <- res$tel
+  forecast_available <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)$fc
 
   fc_sundown <- length(sun_up[sun_up==FALSE])
   fc_sunup <- length(sun_up[sun_up==TRUE])
@@ -223,7 +231,8 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
               "Telemetry is 0 when sun forecasted down"=tel_sundown_0,
               "Telemetry is non-zero when sun forecasted down"=tel_sundown,
               "Telemetry is NaN when sun forecasted down"=tel_sundown_NaN,
-              "Sunup missing telemetry rate"=tel_sunup_NaN/(tel_sunup+tel_sunup_NaN)
+              "Sunup missing telemetry rate"=tel_sunup_NaN/(tel_sunup+tel_sunup_NaN),
+              "Validatable forecasts"= sum(sun_up & !is.nan(tel) & forecast_available)
          ))
 }
 
@@ -233,12 +242,13 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
 #'
 #' @param ts A ts_forecast object
 #' @param tel A vector of the telemetry values
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... optional arguments to equalize_telemetry_forecast_length
-CRPS_avg <-function(ts, tel, ...){
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- x$fc
-
-  crps_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])))
+CRPS_avg <-function(ts, tel, normalize.by=1, ...){
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  crps_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])/normalize.by[i]))
   return(list(mean=mean(crps_list), min=min(crps_list), max=max(crps_list), sd=stats::sd(crps_list)))
 }
 
@@ -255,46 +265,98 @@ Brier <- function(ts, tel, PoE, ...) {
   thresholds <- get_quantile_time_series(ts, 100*(1-PoE))
 
   thresholds <- equalize_telemetry_forecast_length(tel, thresholds, ...)$fc
-  res <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- res$fc
+  res <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- res$fc
   tel <- res$tel
 
   # Find incidence of telemetry exceeding the threshold of exceedance
-  indicator <- as.integer(tel[sun_up & !is.na(tel)] >= thresholds[sun_up & !is.na(tel)])
+  indicator <- as.integer(tel[forecast_available & !is.na(tel)] >= thresholds[forecast_available & !is.na(tel)])
   # Compare Probability of exceedance to its actual incidence
   return(mean((PoE-indicator)^2, na.rm = TRUE))
+}
+
+# Plot Brier score along the quantiles from 1 to 99
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+#' @param nmem Number of ensemble members, to illustrate the n+1 bins
+plot_brier <- function(ts, tel, nmem = NA) {
+  q <- 1:99
+  b <- sapply(q, FUN = function(qi) Brier(ts, tel, (100-qi)/100))
+
+  g <- ggplot2::ggplot(data=data.frame(x=q, y=b), mapping=ggplot2::aes(x=x, y=y)) +
+      ggplot2::xlab("Quantile") +
+      ggplot2::ylab("Brier score") +
+      ggplot2::theme_light()
+
+  if (!is.na(nmem)) {
+    xstart <-  seq(0, 100, by=100/(nmem+1)*2)
+    xend <- seq(100/(nmem+1), 100, by=100/(nmem+1)*2)
+    rects <- data.frame(xstart=xstart[1:length(xend)], xend = xend)
+    g <- g + ggplot2::geom_rect(data = rects, mapping=ggplot2::aes(xmin = xstart, xmax = xend, ymin = -Inf, ymax = Inf), fill = "gray", inherit.aes = FALSE, alpha=0.4)
+  }
+  g <- g + ggplot2::geom_point() +
+        ggplot2::geom_line(data=data.frame(x=q, y=q/100*(100-q)/100))
+
+  plot(g)
+}
+
+equalize_normalization_factor_length <- function(normalize.by, tel, ...) {
+  if (length(normalize.by)>1) {
+    return(equalize_telemetry_forecast_length(tel, normalize.by, ...)$fc)
+  } else {
+    return(rep(normalize.by, times=length(tel)))
+  }
 }
 
 #' Get mean absolute error between the forecast median and the actual value
 #'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the MAE value
-
-MAE <-function(ts, tel, ...) {
+MAE <-function(ts, tel, normalize.by=1, ...) {
   medians <- get_quantile_time_series(ts, 50)
-  sun_up <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)$fc
-  res <- equalize_telemetry_forecast_length(tel, medians, ...)
-  medians <- res$fc
-  tel <- res$tel
-  return(mean(abs(medians[sun_up & !is.na(tel)]-tel[sun_up & !is.na(tel)]), na.rm = TRUE))
+  forecast_available <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)$fc
+  x <- equalize_telemetry_forecast_length(tel, medians, ...)
+  medians <- x$fc
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  indices <- forecast_available & !is.na(x$tel)
+  return(mean(abs(medians[indices]-x$tel[indices])/normalize.by[indices], na.rm = TRUE))
 }
 
 #' Get average interval score, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
 #' Characterizes sharpness, with a penalty for reliability
-#' NEED TO EXPLORE THIS. UNSURE OF VALUE OF DOING SIMPLE AVERAGE OVER A HETEROSCEDASTIC PROCESS TO CHARACTERIZE SHARPNESS.
 #'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average IS value
-IS_avg <-function(ts, tel, alpha, ...) {
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- x$fc
-  is_list <- sapply(which(sun_up & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)})
+IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  is_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)/normalize.by[i]})
   return(list(mean=mean(is_list), min=min(is_list), max=max(is_list), sd=stats::sd(is_list)))
+}
+
+#' Get average sharpness, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
+#' Telemetry isn't used in sharpness, but it is only averaged over times when telemetry is available for direct compatibility with other metrics.
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of telemetry values.
+#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+#' @param normalize.by (optional) A normalization factor, either a scalar or vector
+#' @param ... additional optional arguments to equalize_telemetry_forecast_length
+#' @return the average sharpness value
+sharpness_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
+  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
+  sharpness_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {sharpness(ts$forecasts[[i]], alpha=alpha)/normalize.by[i]})
+  return(list(mean=mean(sharpness_list), min=min(sharpness_list), max=max(sharpness_list), sd=stats::sd(sharpness_list)))
 }
 
 #' Plot diagonal line diagram of quantiles + observations
@@ -349,8 +411,8 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
 #' @param quants Provide a vector of bin breakpoints, or NA to use the given quantiles
 #' @return list of the quantiles and their hit rates
 get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
-  x <- equalize_telemetry_forecast_length(tel, ts$sun_up, ...)
-  sun_up <- x$fc
+  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
+  forecast_available <- x$fc
 
   # Get the list of quantiles that have been evaluated, and add top limit at 1
   if (all(is.na(quants))) {
@@ -358,7 +420,7 @@ get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
   }
 
   # Find time-points where telemetry and forecast data is available
-  indices <- which(!is.nan(x$tel) & sun_up==TRUE)
+  indices <- which(forecast_available & !is.na(x$tel))
   q_idx_subfunc <- function(i) {
     list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x > x$tel[i]) # List of quantile indices above telemetry value
     if (length(list_idx) > 0) {idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution

@@ -131,12 +131,39 @@ test_that("Interval score calculation throws error for bad input", {
   expect_error(IS(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
 })
 
+test_that("Sharpness calculation is correct.", {
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_equal(sharpness(fake_forecast, alpha=0.2), 80)
+})
+
+test_that("Sharpness calculation throws error for bad input", {
+  dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  expect_error(sharpness(fake_forecast, alpha=10), "Alpha.*")
+  expect_error(sharpness(fake_forecast, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
+})
+
 test_that("CRPS estimation is correct", {
   # Squared: 0.04, 0.16, | 0.36, 0.16
-  # 0.04 + 0.5*0.12 = 0.1; 0.16 + 0.5*0.2 + 0.04 * 0.5*0.12= 0.26 + 0.1=0.36
+  # 0.5*(0.16+0.04) = 0.1; 0.5*(0.36+0.16) + 0.5*(0.16+0.04)= 0.26 + 0.1=0.36
   # 0.1 + 0.36 = 0.46
   out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=2)
   expect_equal(out, 0.46)
+})
+
+test_that("CRPS lower outlier calculation is correct", {
+  # Squared:  1, 0.64, 0.36, 0.16, 0.04
+  # 1 + 0.5*(0.64+0.36) + 0.5*(0.36+0.16) + 0.5*(0.16+0.04)
+  # 1 + 0.5*(1) + 0.5*52 + 0.5*0.2 = 1 + 0.5 + 0.26 + 0.1 = 1.86
+  out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=0)
+  expect_equal(out, 1.86)
+})
+
+test_that("CRPS upper outlier calculation is correct", {
+  # As for lower outlier, with outlier rectangle of 2
+  out <- CRPS(x=list(quantiles=list(q=seq(0.2, 0.8, by=0.2) , x=1:4)), tel=6)
+  expect_equal(out, 2.86)
 })
 
 fake_sampling <- function(x,y){
@@ -199,14 +226,13 @@ test_that("Quality control function works correctly and throws errors", {
   expect_equal(qc_input(c(3, NA, 4.5, NA)), c(3, 4.5))
 })
 
-
 test_that("1d rank forecast initialization correctly handles NA's and multiple value.", {
   with_mock(calc_quantiles=mock_pd, qc_input=function(x) return(x),
-            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, 4), location='Odessa', time=1))
+            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, 4), location='Odessa', time=1, max_power = 5))
   expect_true(is.prob_1d_rank_forecast((OUT)))
   expect_equal(length(OUT), 1)
-  expect_equal(OUT$rank_quantiles$x, c(2, 2, 3, 4, 4))
-  expect_equal(OUT$rank_quantiles$y, c(0, 0.25, 0.5, 0.75, 1))
+  expect_equal(OUT$rank_quantiles$x, c(0, 2, 2, 3, 4, 4, 5))
+  expect_equal(OUT$rank_quantiles$y, c(0, 1/6, 2/6, 3/6, 4/6, 5/6, 1))
 })
 
 test_that('1d rank forecast quantile calculation is correct', {
@@ -258,7 +284,7 @@ test_that("1D BMA forecast discrete-continuous model weighting & summation is co
                            max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
 
   with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
-            dbeta = function(xseq, a, b) return(xseq*(a)),
+            dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
             pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
             out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
   expect_equal(out$members$PoC, PoC)
@@ -281,7 +307,7 @@ test_that("1D BMA forecast discrete-continuous model handles missing forecast me
                            max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
 
   with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
-            dbeta = function(xseq, a, b) return(xseq*(a)),
+            dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
             pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
             out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
   expect_equal(out$members$PoC, PoC)
@@ -300,6 +326,24 @@ test_that("pbeta subfunction calculation handles larger threshold resolution", {
             expect_equal(pbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9), c(seq(0, 0.6, length.out = 9), 0.8, 1)/2))
 })
 
+test_that("dbeta subfunction calculation handles minimum threshold resolution", {
+  with_mock(dbeta=function(xseq, a, b) return(xseq),
+            pbeta=function(x, a, b) return(x),
+            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=F), c(seq(0, 0.6, length.out = 10), 0.4/0.1)/2))
+})
+
+test_that("pbeta subfunction calculation handles larger threshold resolution", {
+  with_mock(dbeta=function(xseq, a, b) return(xseq),
+            pbeta=function(x, a, b) return(x),
+            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9, discrete=F), c(seq(0, 0.6, length.out = 9), 0.4/0.2, 0.4/0.2)/2))
+})
+
+test_that("dbeta subfunction calculation handles discrete option", {
+  with_mock(dbeta=function(xseq, a, b) return(xseq),
+            pbeta=function(xseq, a, b) return(max(xseq)),
+            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=T), seq(0, 0.6, length.out = 11)/2))
+})
+
 test_that("get_alpha_betas normalization and calculation is correct", {
   PoC <- c(0, 0.1, 0.5)
   mem <- c(1, 5, 11) # Last should be truncated
@@ -309,12 +353,26 @@ test_that("get_alpha_betas normalization and calculation is correct", {
 
   with_mock(get_poc = function(x, A, ...) return(A),
             get_rho = function(x, ...) return(x),
-            get_gamma = function(x, ...) return(x),
-            out <- get_alpha_betas(fake_x)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
+            get_gamma = function(...) return(2), # gamma is over minimum gamma
+            out <- get_alpha_betas(fake_x))
   expect_equal(out$PoC, PoC)
-  expect_equal(out$alphas, c(0.1, 0.5, 1)^2)
-  expect_equal(out$betas, c(0.1, 0.5, 1)*(1-c(0.1, 0.5, 1)))
+  expect_equal(out$alphas, c(0.1, 0.5, 1)*2)
+  expect_equal(out$betas, 2*(1-c(0.1, 0.5, 1)))
 })
+
+test_that("get_alpha_betas truncates gammas to avoid U distributions and handles NAs", {
+  mp <- 1
+  rho <- c(0.25, 0.75, NA)
+  fake_x <- structure(list(model=list(A0=NA, A1=NA, A2=NA, B0=rho, B1=NA, C0=NA, w=NA, A_transform=NA, B_transform=NA),
+                           max_power=mp, members=rho), class = c("prob_forecast", "prob_1d_bma_forecast"))
+  with_mock(get_poc = function(...) return(NA),
+            get_rho = function(x, B0, ...) return(B0),
+            get_gamma = function(x, ...) return(ifelse(is.na(x), NA, 0.17)), # Variance in grey region based on variance of 0.16
+            out <- get_alpha_betas(fake_x))
+  expect_equal(out$alphas, rho/0.75) # gamma pegged to 1/rho or 1/(1-rho)
+  expect_equal(out$betas, (1-rho)/0.75)
+})
+
 
 test_that('1d bma forecast quantile calculation is correct', {
   fake_forecast <- structure(list(max_power=10), class = c("prob_forecast", "prob_1d_bma_forecast"))
