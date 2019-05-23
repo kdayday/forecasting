@@ -16,7 +16,7 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, features, weights
   if (n < 1) stop(paste('At least 1 analog required. Requested', n, 'analogs.', sep=' '))
 
   # How does this work with h_train netCDF format?
-  sigmas <- apply(h_train[,features], 2, sd)
+  sigmas <- apply(h_train, 2, sd, na.rm=T)
 
   metrics <- vapply(1:dim(h_train)[1], delle_monache_distance, numeric(1),
                      f=f_test, h=h_train, features=features, weights=weights, sigmas=sigmas)
