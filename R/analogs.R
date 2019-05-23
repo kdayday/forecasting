@@ -26,11 +26,13 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, weights) {
   if (length(indices) > n)
     indices <- indices[1:n]
 
+  # Throw out
+
   analog_metrics <- metrics[indices]
   analogs <- h_real[indices]
   forecasts <- h_train[indices,]
 
-  return(list('real'=analogs, 'distance'=analog_metrics, 'forecast'=forecasts))
+  return(list('obs'=analogs, 'distance'=analog_metrics, 'forecast'=forecasts))
 }
 
 #' Calculate Delle Monache distance metric for the physical features for a potential analog
