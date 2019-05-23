@@ -29,6 +29,13 @@ test_that("Analog selection is correct.", {
   expect_equal(out$forecast, h_data[c(4, 2),])
 })
 
+test_that("Analog selection handles NA's in metrics.", {
+  h_data <- matrix(c(1, NA, 1, 2, 1.1, 11, 20, 10, 22, 10), nrow=5, ncol=2)
+  with_mock(delle_monache_distance = function(t, f, h, ...) return(ifelse(all(!is.na(h[t,])), fake_distance[t], NA)),
+            out <- get_historical_analogs(fake_data, h_data, h_real, 2, weights))
+  expect_equal(out$real, c(2, 5))
+})
+
 test_that("Delle Monache feature distance calculation is correct", {
   expect_equal(feature_distance('irr', weights[1], sd(h_data[,'irr']), fake_data, h_data[1:3,]), an1_irr)
 })

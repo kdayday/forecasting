@@ -21,9 +21,15 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, features, weights
   metrics <- vapply(1:dim(h_train)[1], delle_monache_distance, numeric(1),
                      f=f_test, h=h_train, features=features, weights=weights, sigmas=sigmas)
 
-  analog_metrics <- metrics[order(metrics, na.last = TRUE)[1:n]]
-  analogs <- h_real[order(metrics)[1:n]]
-  forecasts <- h_train[order(metrics)[1:n],]
+  # NA's get removed
+  indices <- order(metrics, na.last=NA)
+  # If there are fewer available data points than requested, use them all; otherwise, grab best n fits
+  if (length(indices) > n)
+    indices <- indices[1:n]
+
+  analog_metrics <- metrics[indices]
+  analogs <- h_real[indices]
+  forecasts <- h_train[indices,]
 
   return(list('real'=analogs, 'distance'=analog_metrics, 'forecast'=forecasts))
 }
