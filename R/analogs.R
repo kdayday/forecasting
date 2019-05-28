@@ -17,8 +17,8 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, weights) {
   # How does this work with h_train netCDF format?
   sigmas <- apply(h_train, 2, sd, na.rm=T)
 
-  metrics <- vapply(1:dim(h_train)[1], delle_monache_distance, numeric(1),
-                     f=f_test, h=h_train, weights=weights, sigmas=sigmas)
+  metrics <- vapply(1:dim(h_train)[1], function(i, ...) return(ifelse(is.na(h_real[i]), NA, delle_monache_distance(i, ...))),
+                    FUN.VALUE=numeric(1), f=f_test, h=h_train, weights=weights, sigmas=sigmas)
 
   # NA's get removed
   indices <- order(metrics, na.last=NA)

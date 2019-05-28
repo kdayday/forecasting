@@ -37,6 +37,13 @@ test_that("Analog selection handles NA's in metrics.", {
   expect_equal(out$obs, c(2, 5))
 })
 
+test_that("Analog selection only searches time points with available observations.", {
+  h_real <- c(1.5, NA, 5, 2, 0)
+  with_mock(delle_monache_distance = function(t, f, h, ...) return(ifelse(all(!is.na(h[t,])), fake_distance[t], NA)),
+            out <- get_historical_analogs(fake_data, h_data, h_real, 2, weights))
+  expect_equal(out$obs, c(2, 5))
+})
+
 test_that("Delle Monache feature distance calculation is correct", {
   expect_equal(feature_distance(1, weights[1], sd(h_data[,1]), fake_data, h_data[1:3,]), an1_irr)
 })
