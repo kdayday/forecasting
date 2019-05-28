@@ -11,6 +11,7 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, weights) {
     # Error check arguments
   if (dim(f_test)[1] %% 2 == 0) stop('Forecast data must have an odd number of time-steps for centered analog matching.')
   if (dim(f_test)[2] != length(weights)) stop("Must have same number of weights as physical features")
+  if (dim(h_train)[1] != length(h_real)) stop("Historical forecast and telemetry data must be the length, i.e., already at the same time resolution.")
   if (sum(weights) != 1) stop('Weights must sum to 1.')
   if (n < 1) stop(paste('At least 1 analog required. Requested', n, 'analogs.', sep=' '))
 
@@ -22,11 +23,13 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, weights) {
 
   # NA's get removed
   indices <- order(metrics, na.last=NA)
+  # If there are no viable analogs, throw error
+  if (length(indices) == 0)
+    stop("No viable analogs found")
+
   # If there are fewer available data points than requested, use them all; otherwise, grab best n fits
   if (length(indices) > n)
     indices <- indices[1:n]
-
-  # Throw out
 
   analog_metrics <- metrics[indices]
   analogs <- h_real[indices]

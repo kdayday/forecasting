@@ -16,10 +16,11 @@ an2 <- weights[1]/sd(h_data[,'irr'])*0.1 + weights[2]/sd(h_data[,'press'])*2
 fake_distance <- c(NA, 0.2, 0.3, 0.1, NA)
 
 test_that("Get analogs throws errors. ", {
-  expect_error(get_historical_analogs(fake_data, NULL, NULL, 1, c(0.1))) # Unequal weights and features
-  expect_error(get_historical_analogs(fake_data[1:2,], NULL, NULL, 1,weights)) # Even number of time points
-  expect_error(get_historical_analogs(fake_data, NULL, NULL, 1, c(0.7, 0.2))) # Weights don't add to 1
-  expect_error(get_historical_analogs(fake_data, NULL, NULL, 0, weights)) # Fewer than 1 analogs
+  expect_error(get_historical_analogs(fake_data, h_data, h_real, 1, c(0.1)), "Must have*") # Unequal weights and features
+  expect_error(get_historical_analogs(fake_data[1:2,], h_data, h_real, 1, weights), "*odd number*") # Even number of time points
+  expect_error(get_historical_analogs(fake_data, h_data, h_real, 1, c(0.7, 0.2)), "Weights must sum*") # Weights don't add to 1
+  expect_error(get_historical_analogs(fake_data, h_data, h_real, 0, weights), "At least 1*") # Fewer than 1 analogs
+  expect_error(get_historical_analogs(fake_data, h_data, c(1.5, 1, 5, 2, 0, 2), 1, weights), "*time resolution.") # Forecast and telemetry of different lengths
 })
 
 test_that("Analog selection is correct.", {
@@ -42,6 +43,13 @@ test_that("Analog selection only searches time points with available observation
   with_mock(delle_monache_distance = function(t, f, h, ...) return(ifelse(all(!is.na(h[t,])), fake_distance[t], NA)),
             out <- get_historical_analogs(fake_data, h_data, h_real, 2, weights))
   expect_equal(out$obs, c(2, 5))
+})
+
+
+test_that("Get analogs throws errors if no valid analogs are found. ", {
+  h_real <- c(1.5, NA, NA, NA, 0)
+  with_mock(delle_monache_distance=function(t, ...) return(fake_distance[t]),
+            expect_error(get_historical_analogs(fake_data, h_data, h_real, 2, weights), "No viable*"))
 })
 
 test_that("Delle Monache feature distance calculation is correct", {
