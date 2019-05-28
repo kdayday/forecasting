@@ -2,14 +2,14 @@ context("Test forecasting context")
 
 library(forecasting)
 
-fake_data <- matrix(c(1, 2, 1, 10, 20, 10), nrow=3, ncol=2)
+fake_data <- matrix(c(1.1, 2, 1, 10, 20, 10), nrow=3, ncol=2)
 colnames(fake_data) <- c('irr', 'press')
 
 weights <- c(0.8, 0.2)
 h_data <- matrix(c(1, 2.2, 1, 2, 1.1, 11, 20, 10, 22, 10), nrow=5, ncol=2)
 colnames(h_data) <- c('irr', 'press')
 h_real <- c(1.5, 1, 5, 2, 0)
-an1_irr <- weights[1]/sd(h_data[,'irr'])*0.2
+an1_irr <- weights[1]/sd(h_data[,'irr'])*sqrt(0.2^2 + 0.1^2)
 an1_press <- weights[2]/sd(h_data[,'press'])*1
 an1 <- an1_irr + an1_press
 an2 <- weights[1]/sd(h_data[,'irr'])*0.1 + weights[2]/sd(h_data[,'press'])*2
@@ -45,7 +45,6 @@ test_that("Analog selection only searches time points with available observation
   expect_equal(out$obs, c(2, 5))
 })
 
-
 test_that("Get analogs throws errors if no valid analogs are found. ", {
   h_real <- c(1.5, NA, NA, NA, 0)
   with_mock(delle_monache_distance=function(t, ...) return(fake_distance[t]),
@@ -53,19 +52,24 @@ test_that("Get analogs throws errors if no valid analogs are found. ", {
 })
 
 test_that("Delle Monache feature distance calculation is correct", {
-  expect_equal(feature_distance(1, weights[1], sd(h_data[,1]), fake_data, h_data[1:3,]), an1_irr)
+  expect_equal(feature_distance(1, weights[1], sd(h_data[,1]), fake_data, h_data, t_prime=2, half_interval=1), an1_irr)
+})
+
+test_that("Delle Monache feature distance calculation is correct for time window of length 1", {
+  fake_data <- matrix(c(2, 20), nrow=1, ncol=2)
+  expect_equal(feature_distance(1, weights[1], sd(h_data[,1]), fake_data, h_data, t_prime=2, half_interval=0), weights[1]/sd(h_data[,'irr'])*0.2)
 })
 
 test_that("Delle Monache feature distance is 0 for matching NAs", {
   h_data <- matrix(c(NA, NA, 1, 2, 1.1, 11, 20, 10, 22, 10), nrow=5, ncol=2)
   fake_data <- matrix(c(NA, NA, 1, 10, 20, 10), nrow=3, ncol=2)
-  expect_equal(feature_distance(1, weights[1], sd(h_data[,1], na.rm=T), fake_data, h_data[1:3,]), 0)
+  expect_equal(feature_distance(1, weights[1], sd(h_data[,1], na.rm=T), fake_data, h_data, t_prime=2, half_interval=1), 0)
 })
 
 test_that("Delle Monache feature distance is NA for non-matching NAs", {
   h_data <- matrix(c(NA, NA, 1, 2, 1.1, 11, 20, 10, 22, 10), nrow=5, ncol=2)
   fake_data <- matrix(c(NA, 2.2, 1, 10, 20, 10), nrow=3, ncol=2)
-  expect_true(is.na(feature_distance(1, weights[1], sd(h_data[,1], na.rm=T), fake_data, h_data[1:3,])))
+  expect_true(is.na(feature_distance(1, weights[1], sd(h_data[,1], na.rm=T), fake_data, h_data, t_prime=2, half_interval=1)))
 })
 
 test_that("Delle Monache total distance calculation is correct", {

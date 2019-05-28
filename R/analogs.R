@@ -52,7 +52,8 @@ delle_monache_distance <- function(t_prime, f, h, weights, sigmas) {
   if (t_prime <= half_interval | t_prime >= dim(h)[1]-half_interval+1) {
     return(NA)
   } else {
-   feat_dist <- mapply(feature_distance, seq_len(dim(f)[2]), weights, sigmas, MoreArgs = list(f=f, h=h[(t_prime-half_interval):(t_prime+half_interval),]))
+   feat_dist <- mapply(feature_distance, seq_len(dim(f)[2]), weights, sigmas,
+                       MoreArgs = list(f=f, h=h, t_prime=t_prime, half_interval=half_interval))
    return(sum(feat_dist))
   }
 }
@@ -60,18 +61,20 @@ delle_monache_distance <- function(t_prime, f, h, weights, sigmas) {
 #' Calculate the distance metric for one physical feature for a potential analog
 #' Raw distance is 0 if BOTH forecast and historical are missing
 #' to accommodate windows that overlap sunrise/set. Distance is still NA if only one is missing.
+#' Matrix slicing is done internally to handle half_interval of 0 or matrix of single feature (to avoid vectors)
 #'
 #' @param i index of feature column
 #' @param weight weight [0,1] assigned to this feature
 #' @param sigma Standard deviation of the feature over the historical record
 #' @param f forecast of features the over the time interval of interest
-#' @param h possible historical analog of the features, sliced to equivalent time interval
+#' @param h historical forecasts of features
+#' @param t_prime centered time index of potential analog
+#' @param half_interval length of
 #' @return feature distance
-feature_distance <- function(i, weight, sigma, f, h) {
-  diff <- f[,i]-h[,i]
+feature_distance <- function(i, weight, sigma, f, h, t_prime, half_interval) {
+  h_subset <- h[(t_prime-half_interval):(t_prime+half_interval),i]
+  diff <- f[,i]-h_subset
   # Overwrite with distance of 0 if both the forecast and historical were NA -- for times overlapping with sunrise/set
-  diff[is.na(f[,i]) & is.na(h[,i])] <- 0
+  diff[is.na(f[,i]) & is.na(h_subset)] <- 0
  return(weight/sigma*sqrt(sum((diff)^2)))
 }
-
-
