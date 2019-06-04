@@ -37,11 +37,13 @@ test_that("Analog selection handles NA's in metrics.", {
   expect_equal(out$obs, c(2, 5))
 })
 
-test_that("Analog selection only searches time points with available observations.", {
-  h_real[1] <- NA
+test_that("Analog selection only searches time points with available observations & fills insufficient analogs with NaNs", {
+  h_real[1:2] <- NA
   with_mock(delle_monache_distance = function(h, f, weights, ...) return(ifelse(all(!is.na(h)), abs(sum(fake_data - h)), NA)),
-            out <- get_historical_analogs(fake_data, h_data, h_real, 2, weights))
-  expect_equal(out$obs, c(2, 5))
+            out <- get_historical_analogs(fake_data, h_data, h_real, 4, weights))
+  expect_equal(out$obs, c(2, NA, NaN, NaN))
+  expect_equal(out$distance, c(2, NA, NaN, NaN))
+  expect_equal(out$forecast, aperm(array(c(h_data[3,,], rep(NaN, times=18)), dim=c(3, 2, 4)), c(3, 1,2)))
 })
 
 test_that("Get analogs throws errors if no valid analogs are found. ", {

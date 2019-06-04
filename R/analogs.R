@@ -11,12 +11,16 @@
 #' @return A list of the analogs, including observed value, the forecast along the matching window, and the distance metric.
 get_historical_analogs <- function(f_test, h_train, h_real, n, weights, sigmas=FALSE) {
     # Error check arguments
-  if (dim(f_test)[1] %% 2 == 0) stop('Forecast data must have an odd number of time-steps for centered analog matching.')
-  if (dim(f_test)[1] != dim(h_train)[2]) stop('Forecast data and test data must have matching windows of the same length.')
-  if (dim(f_test)[2] != length(weights)) stop("Must have same number of weights as physical features")
+  matching_time <- dim(f_test)[1]
+  n_features <- dim(f_test)[2]
+  if (matching_time %% 2 == 0) stop('Forecast data must have an odd number of time-steps for centered analog matching.')
+  if (matching_time != dim(h_train)[2]) stop('Forecast data and test data must have matching windows of the same length.')
+  if (n_features != length(weights)) stop("Must have same number of weights as physical features")
   if (dim(h_train)[1] != length(h_real)) stop("Historical forecast and telemetry data must be the length, i.e., already at the same time resolution.")
   if (sum(weights) != 1) stop('Weights must sum to 1.')
   if (n < 1) stop(paste('At least 1 analog required. Requested', n, 'analogs.', sep=' '))
+
+
 
   # There should be the same number of standard deviations as weights
   if (!sigmas) sigmas <- apply(h_train, 3, FUN=function(i) sd(i[i>0], na.rm=T))
@@ -30,13 +34,17 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, weights, sigmas=F
   if (length(indices) == 0)
     stop("No viable analogs found")
 
-  # If there are fewer available data points than requested, use them all; otherwise, grab best n fits
-  if (length(indices) > n)
-    indices <- indices[1:n]
-
-  analog_metrics <- metrics[indices]
-  analogs <- h_real[indices]
-  forecasts <- h_train[indices,,]
+  # If there are fewer available data points than requested, use them all and top up with NaN's for remainder; otherwise, grab best n fits
+  if (length(indices) >= n) {
+    analog_metrics <- metrics[indices[1:n]]
+    analogs <- h_real[indices[1:n]]
+    forecasts <- h_train[indices[1:n],,]
+  } else {
+    n_missing <- n-length(indices)
+    analog_metrics <- c(metrics[indices], rep(NaN, times=n_missing))
+    analogs <- c(h_real[indices], rep(NaN, times=n_missing))
+    forecasts <- aperm(array(c(h_train[indices,,], rep(NaN, times=n_missing*prod(dim(f_test)))), dim=c(matching_time, n_features, n)), c(3, 1, 2))
+  }
 
   return(list('obs'=analogs, 'distance'=analog_metrics, 'forecast'=forecasts))
 }
