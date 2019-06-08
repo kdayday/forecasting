@@ -171,10 +171,11 @@ plot_cvar_over_time <- function(x) {
 #' @param tel A vector of the telemetry values
 #' @param fc A vector of data from the time series forecast
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
-#' @param align Can be "top of hour" or "half hour". Defaults to "half hour"
+#' @param align Can be "top of hour", "half hour backend" (NaN first, telemetry lags), or "half hour frontend" (NaN last, telemetry leads).
+#' Defaults to "half hour backend". Currently half hour approaches expand forecast the same way.
 #' @return list of the telemetry and forecast data vectors, of equal length
-equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="half hour") {
-  if (!(align %in% c("top of hour", "half hour"))) stop(paste("Unknown method for align. Given ", align, sep=''))
+equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="end-of-hour") {
+  if (!(align %in% c("end-of-hour", "half-hour-backend", "half-hour-frontend"))) stop(paste("Unknown method for align. Given ", align, sep=''))
   if (length(tel) != length(fc) & (length(tel) < length(fc) | length(tel) %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
 
   tel_2_fc <- length(tel)/length(fc)
@@ -183,7 +184,7 @@ equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="half ho
   index_translation <- function(i) {i}
 
   if (tel_2_fc > 1) {
-    if (align=="top of hour") {
+    if (align=="end-of-hour") {
       if (agg) {
         tel <- sapply(seq_along(fc), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
       } else {
@@ -191,9 +192,13 @@ equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="half ho
         # Modified translation function to align more frequent telemetry with forecast:
         index_translation <- purrr::partial(function(i, tel_2_fc) {floor((i-1)/tel_2_fc)+1}, tel_2_fc=tel_2_fc)
       }
-    } else { # align == "half hour"
+    } else { # align == "half hour" of some variety
       if (agg) {
-        tel <- c(NA, sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
+        if (align=="half-hour-backend"){
+          tel <- c(NaN, sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
+        } else {# align == "half hour frontend"
+          tel <- c(sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}), NaN)
+        }
       } else {
         fc <- c(rep(fc[1], each=tel_2_fc/2), rep(fc[-1], each=tel_2_fc), rep(NA, each=tel_2_fc/2))
         # Modified translation function to align more frequent telemetry with forecast

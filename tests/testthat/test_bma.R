@@ -35,7 +35,7 @@ test_that("e_step array handling is correct.", {
   C0 <- 1
   w <- c(10, 20)
   PoC <- array(data=3*(1:8), dim = c(2,2,2))
-  OBS <- matrix(1:4, ncol=2)
+  OBS <- array(rep(1:4, times=2), dim=c(2,2,2))
 
   with_mock(get_rho= function(FCST, B0, B1, ...) return(sum(FCST, B0, B1)),
             get_gamma = function(rho, C0) return(sum(rho, C0)), # 3:2:17
@@ -69,7 +69,9 @@ test_that("em_subfunction is correct.", {
 test_that("beta1_ens_modesl throws errors", {
   expect_error(beta1_ens_models(tel=c(1, 1.01, NA), ens=matrix((1:9)/9, ncol=3)), "Telemetry*")
   expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9), ncol=3)), "All forecasts*")
-  expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=1)), "Must*")
+  expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=1)), "Must*") # telemetry vector wrong length
+  # Does not check for correct order of dimensions
+  expect_error(beta1_ens_models(tel=matrix((1:6)/9, ncol=3), ens=matrix((1:9)/9, ncol=3)), "Must*") # telemetry matrix wrong size
   expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=0.9), "Percent*")
   expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=1.1), "Percent*")
 })

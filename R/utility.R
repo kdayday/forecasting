@@ -17,19 +17,19 @@ get_start_day <- function(date_data_start, date_start){
 
 #' Load data from a NETCDF file of ensemble forecasts
 #' Assumed file dimensions: Day x Hour x Site x Lead time x Ensemble member
-#' Returns an array of data: [site x member x time]
+#' Returns an array of data: [site x member x time] or [site x member x time x lead time]
 #' Site selection and member selection can all be vectors of non-consecutive values
 #' Time-point selection is a consecutive sequence
 #' @param fname file name
 #' @param members A vector of member indices
 #' @param sites A vector of sites
-#' @param lead_time Forecast lead time
+#' @param lead_times Forecast lead time or a set of lead times
 #' @param date_start A lubridate: Start date of data to load
 #' @param date_end A lubridate: End date of data to load
 #' @param date_data_start A lubridate: Date of first day in file
 #' @param truncate Boolean: Whether or not to truncate the forecasts at the site maximum power
 #' @param site_max_power A vector of the maximum power at ALL sites (not just those listed in sites)
-get_netcdf_forecast_data <- function(fname, members, sites, lead_time, date_start, date_end,
+get_netcdf_forecast_data <- function(fname, members, sites, lead_times, date_start, date_end,
                                      date_data_start=lubridate::ymd(20160101),
                                      ts_per_day=24, vname="power",
                                      truncate=F, site_max_power=NA) {
@@ -45,26 +45,32 @@ get_netcdf_forecast_data <- function(fname, members, sites, lead_time, date_star
   # Open file
   nc <- ncdf4::nc_open(fname)
 
-  # Get a matrix for this member and site
-  member_data <- function(member, site) {
+  # Get a matrix for this member, site, and lead time
+  member_data <- function(member, site, lead_time) {
     dim_starts <- c(start_day,1, site, lead_time, member)
     return(ncdf4::ncvar_get(nc, varid=vname, start=dim_starts, count=dim_counts))
   }
 
   # Get a [member x day x hour] matrix at this site
-  site_data <- function(site) {
-    m <- sapply(members, FUN = member_data, site=site, simplify ="array")
+  site_data <- function(site, lead_time) {
+    m <- sapply(members, FUN = member_data, site=site, lead_time=lead_time, simplify ="array")
     m[which(m > site_max_power[site])] <- site_max_power[site]
     return(m)
     }
 
-  data <- sapply(sites, site_data, simplify="array")
+  if (length(lead_times)==1) {
+    data <- sapply(sites, site_data, lead_time=lead_times, simplify="array")
+    # Return in dimensions [site x member x time]
+    data <- array(aperm(data, c(4, 3, 2, 1)), dim=c(length(sites), length(members), ndays*ts_per_day))
+  } else {
+    data <- sapply(lead_times, FUN=function(lead_time) sapply(sites, site_data, lead_time=lead_time, simplify="array"), simplify="array")
+    data <- array(aperm(data, c(4, 3, 2, 1, 5)), dim=c(length(sites), length(members), ndays*ts_per_day, length(lead_times)))
+  }
 
   # Close the file!
   ncdf4::nc_close(nc)
 
-  # Return in dimensions [site x member x time]
-  return(array(aperm(data, c(4, 3, 2, 1)), dim=c(length(sites), length(members), ndays*ts_per_day)))
+  return(data)
 }
 
 

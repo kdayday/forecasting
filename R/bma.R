@@ -2,31 +2,34 @@
 
 # Fit BMA coefficients for beta distributions with discrete component at 1 for each ensemble member
 # Data should be pre-processed and normalized to [0,1] so that clipped values are exactly 1
-#' @param tel Vector of training telemetry data on [0,1]
+#' @param tel Vector of training telemetry data on [0,1] OR a matrix [time x member] of training telemetry data tailored to each member
 #' @param ens Matrix of training ensemble member data [time x member] on [0,1]
 #' @param lr_formula Formula in terms of x,y for logistic regression model, defaults to "y ~ x". Requires a negative x intercept to model PoC < 0.5.
 #' @param A_transform A function for transforming forecast data before logistic regression to get a's (optional)
 #' @param lm_formula Formula in terms of x,y for linear regression model, defaults to "y ~ x + 0"
 #' @param B_transform A function for transforming forecast data before linear regression to get b's (optional)
 #' @param percent_clipping_threshold [0,1] Power is designated as clipped when above this percentage of the maximum power
-#' @param tol A tolerance for determining if normalized values fall are <=1 (defaults to 0.001)
+#' @param tol A tolerance for determining if normalized values all are <=1 (defaults to 0.001)
 #' @param ... Optional arguments to pass to EM algorithm
 #' @return A list for a discrete-continuous mixture model with beta distribution
 beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, percent_clipping_threshold=0.995, tol=1e-3, ...) {
   if (any(tel < 0, na.rm=T) | any(tel - 1>tol, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
   if (any(ens < 0, na.rm=T) | any(ens - 1>tol , na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
   if (percent_clipping_threshold < 0.95  | percent_clipping_threshold > 1) stop('Percent clipping threshold must be <=1. Much greater than 0.95 is recommended.')
-  if (length(tel) != dim(ens)[1]) stop("Must have same number of telemetry and forecast time-points.")
+  if (!(length(tel) == dim(ens)[1] | length(tel) == prod(dim(ens)))) stop("Must have same number of telemetry and forecast time-points.")
+
+  # If needed, replicate telemetry out from vector to matrix
+  if (length(tel) == dim(ens)[1]) tel <- replicate(dim(ens)[2], tel)
 
   # 1. Logistic regression for a's
   # Returns a list of model summaries, one per member
-  mem_discrete_models <-lapply(seq_len(dim(ens)[2]), function(i) get_lr(ens[,i], tel=tel, form=lr_formula, A_transform = A_transform,
+  mem_discrete_models <-lapply(seq_len(dim(ens)[2]), function(i) get_lr(ens[,i], tel=tel[,i], form=lr_formula, A_transform = A_transform,
                                                                         percent_clipping_threshold=percent_clipping_threshold))
   A0 <- sapply(mem_discrete_models, function(m) return(unname(m$coefficients["(Intercept)"])))
   A1 <- sapply(mem_discrete_models, function(m) return(unname(m$coefficients["x"])))
 
   # 2. linear regression for b's.
-  mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel, form=lm_formula, B_transform = B_transform,
+  mem_mean_models <- lapply(seq_len(dim(ens)[2]), function(i) get_lm(ens[,i], tel=tel[,i], form=lm_formula, B_transform = B_transform,
                                                                      percent_clipping_threshold=percent_clipping_threshold))
   # Force intercept to 0 if it is not included in the model
   B0 <- sapply(mem_mean_models, function(m) return(ifelse("(Intercept)" %in% rownames(m$coefficients), m$coefficients["(Intercept)", "Estimate"], 0)))
@@ -45,7 +48,7 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
   ntime <- dim(ens)[1]
   nens <- dim(ens)[2]
   array_dims <- c(ntime, 1, nens)
-  tmp <- em(FCST=array(ens, dim=array_dims), OBS=array(tel, dim=c(ntime, 1)), A0=array(rep(A0, each=ntime), dim=array_dims),
+  tmp <- em(FCST=array(ens, dim=array_dims), OBS=array(tel, dim=array_dims), A0=array(rep(A0, each=ntime), dim=array_dims),
             A1=array(rep(A1, each=ntime), dim=array_dims), A2=0, B0=array(rep(B0, each=ntime), dim=array_dims),
             B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, percent_clipping_threshold=percent_clipping_threshold, ...)
 
@@ -120,8 +123,8 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, percent_
     # Inputs:
     #  FCST        array of dimension (length of training period)x(number of stations)x(number of ensemble members)
     #              where each matrix (FCST[,,k]) has a ensemble member's forecast for these sites and times
-#  OBS         matrix of dimension (length of training period)x(number of stations)
-#              of observations at these sites and times
+#  OBS         matrix of dimension (length of training period)x(number of stations)x(number of ensemble members)
+#              of observations at these sites and times, training data selected by ensemble member
 #  XN          for X=A,B and N=0,1,2, array of dimension (length of training period)x(number of stations)x
 #              (number of ensemble members) of estimates of XN (usually posterior mean for A0,1,2 and
 #              least squares from regression for B0,1)
@@ -206,7 +209,7 @@ e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_
 
   # z is an array with the first entry being day, second entry site, third entry forecast
   # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
-  # Linear indexing, OBS is recycled across members, w explicitly expanded
+  # Linear indexing, OBS already expanded across members, w explicitly expanded
   z_num <-  array(mapply(get_weighted_probability, OBS, PoC, gammas, rhos, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(percent_clipping_threshold=percent_clipping_threshold)), dim(FCST))
 
   # sumz is weighted sum of density functions across the members. Rows are single training days, columns are sites

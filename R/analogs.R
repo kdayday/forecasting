@@ -1,61 +1,79 @@
 #'
 #' Assumes that the forecast data and historical analogs are at the same time-resolution
+#' To calculate standard deviation of each feature, zero values are skipped.
 #'
-#' @param f_test matrix of the forecast data to fit on, rows for time-steps, columns for physical variables
-#' @param h_train matrix of historical forecast data, rows for time-steps, columns for physical variables
+#' @param f_test matrix of the forecast data to fit on [time along matching window x physical feature]
+#' @param h_train array of historical forecast data [potential analog time x time along matching window x physical feature]. Matching window time can be a singleton dimension
 #' @param h_real Historical realized value of interest, e.g., power (equivalent to a kNN classification)
 #' @param n Integer, number of historical analogs to pick
-#' @param features Vector of the column names to use for similarity measurement
 #' @param weights Vector of weights to use for each feature
-#' @return A matrix of the analogs, one analog per row, columns for physical variables + realized value
-get_historical_analogs <- function(f_test, h_train, h_real, n, features, weights) {
-  # Error check arguments
-  if (dim(f_test)[1] %% 2 == 0) stop('Forecast data must have an odd number of time-steps for centered analog matching.')
-  if (length(features) != length(weights)) stop(paste('Given', length(features), 'features and', length(weights), 'weights. Must be same length.', sep=' '))
+#' @param sigmas (optional) Vector of standard deviations to use for each feature. Can be re-calculated if feature has redundancies to make matrix structure.
+#' @return A list of the analogs, including observed value, the forecast along the matching window, and the distance metric.
+get_historical_analogs <- function(f_test, h_train, h_real, n, weights, sigmas=FALSE) {
+    # Error check arguments
+  matching_time <- dim(f_test)[1]
+  n_features <- dim(f_test)[2]
+  if (matching_time %% 2 == 0) stop('Forecast data must have an odd number of time-steps for centered analog matching.')
+  if (matching_time != dim(h_train)[2]) stop('Forecast data and test data must have matching windows of the same length.')
+  if (n_features != length(weights)) stop("Must have same number of weights as physical features")
+  if (dim(h_train)[1] != length(h_real)) stop("Historical forecast and telemetry data must be the length, i.e., already at the same time resolution.")
   if (sum(weights) != 1) stop('Weights must sum to 1.')
   if (n < 1) stop(paste('At least 1 analog required. Requested', n, 'analogs.', sep=' '))
 
-  # How does this work with h_train netCDF format?
-  sigmas <- apply(h_train[,features], 2, sd)
 
-  metrics <- vapply(1:dim(h_train)[1], delle_monache_distance, numeric(1),
-                     f=f_test, h=h_train, features=features, weights=weights, sigmas=sigmas)
 
-  analog_metrics <- metrics[order(metrics, na.last = TRUE)[1:n]]
-  analogs <- h_real[order(metrics)[1:n]]
-  forecasts <- h_train[order(metrics)[1:n],]
+  # There should be the same number of standard deviations as weights
+  if (!sigmas) sigmas <- apply(h_train, 3, FUN=function(i) sd(i[i>0], na.rm=T))
 
-  return(list('real'=analogs, 'distance'=analog_metrics, 'forecast'=forecasts))
+  metrics <- vapply(seq_along(h_real), function(i, ...) return(ifelse(is.na(h_real[i]), NA, delle_monache_distance(h_train[i,,], ...))),
+                    FUN.VALUE=numeric(1), f=f_test, weights=weights, sigmas=sigmas)
+
+  # NA's get removed
+  indices <- order(metrics, na.last=NA)
+  # If there are no viable analogs, throw error
+  if (length(indices) == 0)
+    stop("No viable analogs found")
+
+  # If there are fewer available data points than requested, use them all and top up with NaN's for remainder; otherwise, grab best n fits
+  if (length(indices) >= n) {
+    analog_metrics <- metrics[indices[1:n]]
+    analogs <- h_real[indices[1:n]]
+    forecasts <- h_train[indices[1:n],,]
+  } else {
+    n_missing <- n-length(indices)
+    analog_metrics <- c(metrics[indices], rep(NaN, times=n_missing))
+    analogs <- c(h_real[indices], rep(NaN, times=n_missing))
+    forecasts <- aperm(array(c(h_train[indices,,], rep(NaN, times=n_missing*prod(dim(f_test)))), dim=c(matching_time, n_features, n)), c(3, 1, 2))
+  }
+
+  return(list('obs'=analogs, 'distance'=analog_metrics, 'forecast'=forecasts))
 }
 
 #' Calculate Delle Monache distance metric for the physical features for a potential analog
 #'
-#' @param t_prime Centered time index of the potential analog
-#' @param f forecast of features the over the time interval of interest
-#' @param h historical forecasts of the features
-#' @param features Vector of the column names to use for similarity measurement
+#' @param h a potential analog, [time along matching window x physical feature]
+#' @param f forecast of features, [time along matching window x physical feature]
 #' @param weights Vector of weights to use for each feature
 #' @param sigmas Standard deviations of the features over the historical record
 #' @return Delle Monache distance
-delle_monache_distance <- function(t_prime, f, h, features, weights, sigmas) {
-  half_interval <- (dim(f)[1] - 1)/2
-
-  if (t_prime <= half_interval | t_prime >= dim(h)[1]-half_interval+1) {
-    return(NA)
-  } else {
-   feat_dist <- mapply(feature_distance, features, weights, sigmas, MoreArgs = list(f=f, h=h[(t_prime-half_interval):(t_prime+half_interval), features]))
-   return(sum(feat_dist))
-  }
+delle_monache_distance <- function(h, f, weights, sigmas) {
+  feat_dist <- sapply(seq_len(dim(f)[2]), FUN=function(i) return(feature_distance(weights[i], sigmas[i], f[,i], h[,i])))
+  return(sum(feat_dist))
 }
 
 #' Calculate the distance metric for one physical feature for a potential analog
+#' Raw distance is 0 if BOTH forecast and historical are missing
+#' to accommodate windows that overlap sunrise/set. Distance is still NA if only one is missing.
+#' Matrix slicing is done internally to handle half_interval of 0 or matrix of single feature (to avoid vectors)
 #'
-#' @param feature a column name
-#' @param weight weight [0,1] assigned to that feature
+#' @param weight weight [0,1] assigned to this feature
 #' @param sigma Standard deviation of the feature over the historical record
-#' @param f forecast of features the over the time interval of interest
-#' @param h possible historical analog of the features, sliced to equivalent time interval
+#' @param f A vector forecast of one features
+#' @param h An potential analog forecast of one feature
 #' @return feature distance
-feature_distance <- function(feature, weight, sigma, f, h) {
- return(weight/sigma*sqrt(sum((f[,feature]-h[,feature])^2)))
+feature_distance <- function(weight, sigma, f, h) {
+  diff <- f-h
+  # Overwrite with distance of 0 if both the forecast and historical were NA -- for times overlapping with sunrise/set
+  diff[is.na(f) & is.na(h)] <- 0
+ return(weight/sigma*sqrt(sum((diff)^2)))
 }
