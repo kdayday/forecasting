@@ -11,7 +11,7 @@ marg_transform <- function(x, cdf.method='geenens', ... ) {
   # Get selected marginal estimate
   res <- func(x, ...)
 
-  if (!all(is.nan(res$d)) & any(res$d < 0)) warning("Negative probability density values.") # Ignores empirical estimate
+  if (!all(is.nan(res$d)) & any(res$d < 0, na.rm=T)) warning("Negative probability density values.") # Ignores empirical estimate
 
   dat <- list('x'=res$x,
               'd'=res$d,
@@ -59,7 +59,7 @@ plot_pdf <- function(c, col='black') {
 #' @param u A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the uniform to variable domain
 from_uniform <- function(c, u) {
-  if (any(u<=0 | u>=1)) stop("Evaluation point(s) for uniform transform must be in (0,1).")
+  if (any(u<=0 | u>=1, na.rm=T)) stop("Evaluation point(s) for uniform transform must be in (0,1).")
   return(stats::approx(c$u, c$x, xout=u, rule=2)$y)
 }
 
@@ -69,7 +69,7 @@ from_uniform <- function(c, u) {
 #' @param x A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the variable to uniform domain
 to_uniform <- function(c, x) {
-  if (any(x<c$xmin | x >c$xmax)) warning("Evaluation point(s) beyond the variable range of the CDF.  ")
+  if (any(x<c$xmin | x >c$xmax, na.rm=T)) warning("Evaluation point(s) beyond the variable range of the CDF.  ")
   return(stats::approx(c$x, c$u, xout=x, yleft = 0, yright = 1)$y)
 }
 
@@ -79,7 +79,7 @@ to_uniform <- function(c, x) {
 #' @param x A vector of evaluation points to transform
 #' @return A vector linearly interpolated from the variable to probability density
 to_probability <- function(c, x) {
-  if (any(x<c$xmin | x >c$xmax)) warning("Evaluation point(s) beyond the variable range of the PDF.  ")
+  if (any(x<c$xmin | x >c$xmax, na.rm=T)) warning("Evaluation point(s) beyond the variable range of the PDF.  ")
   if (is.nan(c$d)) stop("Probability vector is NaN. (Undefined for empirical transform).")
   return(stats::approx(c$x, c$d, xout=x, yleft = 0, yright = 0)$y)
 }
