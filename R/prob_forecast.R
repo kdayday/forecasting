@@ -168,7 +168,8 @@ prob_nd_vine_forecast <- function(data.input, location, time,
   training_transforms <- tr$training
   results_transforms <- tr$results
 
-  uniform_dat <- mapply(function(n, t) {to_uniform(t, data.input[,n])}, colnames(data.input, do.NULL=FALSE), training_transforms)
+  uniform_dat <- sapply(seq_along(training_transforms), FUN=function(i) {to_uniform(training_transforms[[i]], data.input[,i])}, simplify = "array")
+
   model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
 
   # Initialize probabilistic forecast
