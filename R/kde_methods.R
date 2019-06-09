@@ -44,13 +44,13 @@ probkde1d <- function(x, ...) {
 #' @param x A vector of samples
 #' @param xmax maximum
 #' @return A list of the evaluation points, density, and cumulative distribution
-probempirical <- function(x, xmax=max(ceiling(x))) {
+probempirical <- function(x, xmax=max(ceiling(x), na.rm = T)) {
 
   xmax <- check_xmax(x, xmax)
-  if (xmax > max(x)) {
-    xseq <- c(0, sort(x), xmax)
+  if (xmax > max(x, na.rm=T)) {
+    xseq <- c(0, sort(x, na.last=NA), xmax)
   } else {
-    xseq <- c(0, sort(x))
+    xseq <- c(0, sort(x, na.last=NA))
   }
 
   # Aggregate to combine duplicate values
@@ -63,9 +63,9 @@ probempirical <- function(x, xmax=max(ceiling(x))) {
 
 check_xmax <- function (x, xmax){
   # Pick the largest maximum value, in case actual data exceeds rating
-  if (!(is.nan(xmax)) & xmax < max(ceiling(x))){
-    warning(paste("To fit given data points, xmax of ", xmax, " being replaced with ", max(ceiling(x)), sep=''))
-    xmax <- max(ceiling(x))
+  if (!(is.nan(xmax)) & xmax < max(ceiling(x), na.rm=T)){
+    warning(paste("To fit given data points, xmax of ", xmax, " being replaced with ", max(ceiling(x), na.rm=T), sep=''))
+    xmax <- max(ceiling(x), na.rm=T)
   }
   return(xmax)
 }
@@ -156,7 +156,7 @@ probtranskde <- function(x, xmax, scale=0.9999, zero_offset=0.0001, max_scaler=2
 get_output_seq <- function(x, xmax, n.res, scaler) {
   # On (0, inf) for log function
   if (is.nan(xmax)) {
-    return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res)*max(x)*scaler)
+    return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res)*max(x, na.rm=T)*scaler)
   } else { # On (0,1) for probit function
     return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res))
   }
