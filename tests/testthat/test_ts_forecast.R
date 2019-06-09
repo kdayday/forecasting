@@ -88,12 +88,16 @@ test_that("Check sun-up works correctly", {
 test_that("Equalize telemetry throws error on input checks.", {
   expect_error(equalize_telemetry_forecast_length(tel=c(10, 15), fc=c(3, 4, 5)), '*even multiple*')
   expect_error(equalize_telemetry_forecast_length(tel=1:15, fc=c(3, 4, 5)), '*even multiple*')
+  expect_error(equalize_telemetry_forecast_length(tel=4, fc=1:3), '*even multiple*') # Test single value rather than vector inputs
+  expect_error(equalize_telemetry_forecast_length(tel=1:4, fc=3), '*even multiple*') # Test single value rather than vector inputs
   expect_error(equalize_telemetry_forecast_length(tel=c(10, 15), fc=c(3, 4), align="end of hour"), 'Unknown method*')
 })
 
 test_that("Equalize telemetry does nothing for equal length forecasts", {
   expect_equal(equalize_telemetry_forecast_length(tel=1:4, fc=5:8)[c('tel', 'fc', 'tel_2_fc')],
                list(tel=1:4, fc=5:8, tel_2_fc=1))
+  expect_equal(equalize_telemetry_forecast_length(tel=1, fc=5)[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=1, fc=5, tel_2_fc=1))
 })
 
 test_that("Equalize telemetry calculation is correct for top of hour", {
@@ -103,16 +107,18 @@ test_that("Equalize telemetry calculation is correct for top of hour", {
                list(tel=c(1, 0, 2, 1, 3, 3, 9, 9), fc=c(1,1,1,1,2,2,2,2), tel_2_fc=4))
 })
 
-test_that("Equalize telemetry calculation is correct for half-hour alignment", {
-  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=TRUE, align="half-hour-backend")[c('tel', 'fc', 'tel_2_fc')],
-               list(tel=c(NaN, 18, 34)/4, fc=1:3, tel_2_fc=4))
-  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=FALSE, align="half-hour-backend")[c('tel', 'fc', 'tel_2_fc')],
-               list(tel=1:12, fc=c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, NA, NA), tel_2_fc=4))
+test_that("Equalize telemetry calculation handles length rather than vector inputs", {
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 1, 3, 3, 9, 9), fc=2, agg=TRUE, align="end-of-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=c(1, 6), fc=2, tel_2_fc=4))
+  expect_equal(equalize_telemetry_forecast_length(tel=8, fc=1:2, agg=FALSE, align="end-of-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=8, fc=c(1,1,1,1,2,2,2,2), tel_2_fc=4))
 })
 
-test_that("Equalize telemetry calculation is correct for half-hour frontend alignment", {
-  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=TRUE, align="half-hour-frontend")[c('tel', 'fc', 'tel_2_fc')],
-               list(tel=c(18, 34, NaN)/4, fc=1:3, tel_2_fc=4))
+test_that("Equalize telemetry calculation is correct for half-hour alignment", {
+  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=TRUE, align="half-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=c(NaN, 18, 34)/4, fc=1:3, tel_2_fc=4))
+  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=FALSE, align="half-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=1:12, fc=c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, NA, NA), tel_2_fc=4))
 })
 
 test_that("Equalize telemetry output translation functions are correct", {
@@ -122,12 +128,27 @@ test_that("Equalize telemetry output translation functions are correct", {
   func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=FALSE, align="end-of-hour")$translate_forecast_index
   expect_equal(func(1:12), c(1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3))
 
-  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=TRUE, align="half-hour-backend")$translate_forecast_index
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=TRUE, align="half-hour")$translate_forecast_index
   expect_equal(func(1:12), 1:12)
 
-  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=FALSE, align="half-hour-backend")$translate_forecast_index
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=FALSE, align="half-hour")$translate_forecast_index
   expect_equal(func(1:12), c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4))
 })
+
+test_that("Equalize telemetry output translation functions are correct for length rather than vector inputs", {
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=2, agg=TRUE, align="end-of-hour")$translate_forecast_index
+  expect_equal(func(1:12), 1:12)
+
+  func <- equalize_telemetry_forecast_length(tel=8, fc=1:2, agg=FALSE, align="end-of-hour")$translate_forecast_index
+  expect_equal(func(1:12), c(1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3))
+
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=2, agg=TRUE, align="half-hour")$translate_forecast_index
+  expect_equal(func(1:12), 1:12)
+
+  func <- equalize_telemetry_forecast_length(tel=8, fc=1:2, agg=FALSE, align="half-hour")$translate_forecast_index
+  expect_equal(func(1:12), c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4))
+})
+
 
 test_that("Equalize telemetry calculation handles NA's correctly", {
   expect_equal(equalize_telemetry_forecast_length(tel=c(1:4, NaN), fc=1:5, align="end-of-hour")[c('tel', 'fc', 'tel_2_fc')],

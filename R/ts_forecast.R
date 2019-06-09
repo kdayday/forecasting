@@ -168,17 +168,32 @@ plot_cvar_over_time <- function(x) {
 #' Preprocess for metrics evaluations, for when telemetry is at finer time resolution than the forecast.
 #' The forecast and telemetry can be at different time resolutions, so long as telemetry is a multiple of the forecast.
 #'
-#' @param tel A vector of the telemetry values
-#' @param fc A vector of data from the time series forecast
+#' @param tel A vector of the telemetry values OR a single value of the length of the telemetry values
+#' @param fc A vector of data from the time series forecast OR a single value of the length of the forecast values
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
-#' @param align Can be "top of hour", "half hour backend" (NaN first, telemetry lags), or "half hour frontend" (NaN last, telemetry leads).
+#' @param align Can be "end-of-hour", "half-hour " NaN first, telemetry lags
 #' Defaults to "half hour backend". Currently half hour approaches expand forecast the same way.
 #' @return list of the telemetry and forecast data vectors, of equal length
 equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="end-of-hour") {
-  if (!(align %in% c("end-of-hour", "half-hour-backend", "half-hour-frontend"))) stop(paste("Unknown method for align. Given ", align, sep=''))
-  if (length(tel) != length(fc) & (length(tel) < length(fc) | length(tel) %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+  if (!(align %in% c("end-of-hour", "half-hour"))) stop(paste("Unknown method for align. Given ", align, sep=''))
+  if (length(tel) > 1 & length(fc)> 1){
+    if ((length(tel) != length(fc)) & (length(tel) < length(fc) | length(tel) %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+    fc_length <- length(fc)
+    tel_length <- length(tel)
+  } else if (length(tel) > 1 & length(fc) == 1) {
+    if ((length(tel) != fc) & (length(tel) < fc | length(tel) %% (2*fc) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+    fc_length <- fc
+    tel_length <- length(tel)
+  } else if (length(tel) == 1 & length(fc) > 1) {
+    if ((tel != length(fc)) & (tel < length(fc) | tel %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+    tel_length <- tel
+    fc_length <- length(fc)
+  } else { # Both tel and fc are singletons
+    tel_length <- 1
+    fc_length <- 1
+  }
 
-  tel_2_fc <- length(tel)/length(fc)
+  tel_2_fc <- tel_length/fc_length
 
   # Default translation from telemetry index to forecast index
   index_translation <- function(i) {i}
@@ -186,19 +201,15 @@ equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="end-of-
   if (tel_2_fc > 1) {
     if (align=="end-of-hour") {
       if (agg) {
-        tel <- sapply(seq_along(fc), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
+        tel <- sapply(seq_len(fc_length), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
       } else {
         fc <- rep(fc, each=tel_2_fc)
         # Modified translation function to align more frequent telemetry with forecast:
         index_translation <- purrr::partial(function(i, tel_2_fc) {floor((i-1)/tel_2_fc)+1}, tel_2_fc=tel_2_fc)
       }
-    } else { # align == "half hour" of some variety
+    } else { # align == "half-hour"
       if (agg) {
-        if (align=="half-hour-backend"){
-          tel <- c(NaN, sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
-        } else {# align == "half hour frontend"
-          tel <- c(sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}), NaN)
-        }
+        tel <- c(NaN, sapply(seq_len(fc_length-1), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
       } else {
         fc <- c(rep(fc[1], each=tel_2_fc/2), rep(fc[-1], each=tel_2_fc), rep(NA, each=tel_2_fc/2))
         # Modified translation function to align more frequent telemetry with forecast
