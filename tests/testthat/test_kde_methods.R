@@ -13,15 +13,16 @@ test_that("kde lookup throws error", {
 # Test containers for existing distribution estimation functions
 
 test_that("probempirical handles a given xmax", {
-  out <- probempirical(c(1,2, 4), xmax=5)
+  with_mock(check_xmax=function(x, xmax) return(xmax),
+    out <- probempirical(c(1,2, 4), xmax=5))
   expect_equal(out$x, c(0, 1, 2, 4, 5))
   expect_equal(out$u, c(0, 0.25, 0.5, 0.75, 1))
 })
 
 test_that("probempirical replaces given xmax with actual data maximum", {
-  with_mock(check_xmax=function(x, xmax) return(6),
-            out <- probempirical(c(1, 6), xmax=5))
-  expect_equal(out$x, c(0, 1,  6))
+  with_mock(check_xmax=function(x, xmax) return(5.2),
+            out <- probempirical(c(1, 5.2), xmax=5))
+  expect_equal(out$x, c(0, 1,  5.2))
   expect_equal(out$u, c(0, 0.5, 1))
 })
 

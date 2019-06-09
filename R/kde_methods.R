@@ -44,7 +44,7 @@ probkde1d <- function(x, ...) {
 #' @param x A vector of samples
 #' @param xmax maximum
 #' @return A list of the evaluation points, density, and cumulative distribution
-probempirical <- function(x, xmax=max(ceiling(x), na.rm = T)) {
+probempirical <- function(x, xmax=max(x, na.rm = T)) {
 
   xmax <- check_xmax(x, xmax)
   if (xmax > max(x, na.rm=T)) {
@@ -63,9 +63,9 @@ probempirical <- function(x, xmax=max(ceiling(x), na.rm = T)) {
 
 check_xmax <- function (x, xmax){
   # Pick the largest maximum value, in case actual data exceeds rating
-  if (!(is.nan(xmax)) & xmax < max(ceiling(x), na.rm=T)){
-    warning(paste("To fit given data points, xmax of ", xmax, " being replaced with ", max(ceiling(x), na.rm=T), sep=''))
-    xmax <- max(ceiling(x), na.rm=T)
+  if (!(is.nan(xmax)) & xmax < max(x, na.rm=T)){
+    warning(paste("To fit given data points, xmax of ", xmax, " being replaced with ", max(x, na.rm=T), sep=''))
+    xmax <- max(x, na.rm=T)
   }
   return(xmax)
 }
