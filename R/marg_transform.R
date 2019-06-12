@@ -45,7 +45,7 @@ plot.marg_transform <- function(c) {
 #' Plot a marg_transform PDF
 #'
 #' @param c A marg_transform object
-plot_pdf <- function(c, col='black') {
+plot_pdf.marg_transform <- function(c, col='black') {
   if (all(is.nan(c$d))) stop('Probability density estimate unavailable. (Perhaps using empirical estimate?)')
   graphics::plot(c$x, c$d, xlab="Variable domain X", ylab='Probability density', type='l', lwd=2, col=col)
 }
