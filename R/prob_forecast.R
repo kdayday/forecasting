@@ -677,7 +677,7 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F, di
 prob_1d_kde_forecast <- function(data.input, location, time, cdf.method='geenens', ...) {
   members <- qc_input(data.input)
 
-  func <- kde_lookup(cdf.method)
+  func <- marginal_lookup(cdf.method)
   # Get selected KDE
   model <- func(members, ...)
 

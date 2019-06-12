@@ -6,7 +6,7 @@ library(kde1d)
 library(pracma)
 
 test_that("kde lookup throws error", {
-  expect_error(kde_lookup(4), "Method selection*")
+  expect_error(marginal_lookup(4), "Method selection*")
 })
 
 # -----------------------------------------------------------------------------

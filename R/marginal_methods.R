@@ -1,8 +1,8 @@
 #' Look-up function for the methods implemented here
 #'
-#' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth'
+#' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth', 'precalculate
 #' @return A function
-kde_lookup <- function(method) {
+marginal_lookup <- function(method) {
   if (class(method) != 'character') stop('Method selection must be a character name.')
 
   func <- switch(method,

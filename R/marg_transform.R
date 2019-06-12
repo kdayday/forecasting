@@ -6,7 +6,7 @@
 #' @return
 marg_transform <- function(x, cdf.method='geenens', ... ) {
 
-  func <- kde_lookup(cdf.method)
+  func <- marginal_lookup(cdf.method)
 
   # Get selected marginal estimate
   res <- func(x, ...)
