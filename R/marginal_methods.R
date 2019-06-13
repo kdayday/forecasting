@@ -1,6 +1,6 @@
 #' Look-up function for the methods implemented here
 #'
-#' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth', 'precalculate
+#' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth', 'precalcbma"
 #' @return A function
 marginal_lookup <- function(method) {
   if (class(method) != 'character') stop('Method selection must be a character name.')
@@ -10,12 +10,29 @@ marginal_lookup <- function(method) {
                  kde1d = probkde1d,
                  geenens = probtranskde,
                  kernsmooth = probkde,
+                 precalcbma = probprecalc,
                  stop(paste("Marginal distribution estimator ", method, " not recognized.", sep='')))
   return(func)
 }
 
 # -------------------------------------------------------------------------
 # Containers for existing distribution estimation functions
+
+#' Reformat from an existing prob_1d_bma_forecast object
+#'
+#' @param x A vector of samples
+#' @param ... Optional inputs to the bkde function
+#' @return A list of the evaluation points, density, and cumulative distribution
+probprecalc <- function(x, ...) {
+  # Add backwards compatibility to calculate density with the same x vector
+  if (!(is.prob_1d_bma_forecast(x))) stop("Precalculated marginal lookup currently just set up for BMA forecasts. ")
+  if (!("d" %in% names(x$quantiles))) {
+    quantiles <- calc_quantiles(x)
+  } else quantiles <- x$quantiles
+
+  return(list(x=quantiles$x, d=quantiles$d, u=quantiles$q))
+}
+
 
 #' Get continuous KDE using KernSmooth based on https://vita.had.co.nz/papers/density-estimation.pdf
 #'

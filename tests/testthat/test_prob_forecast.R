@@ -5,8 +5,8 @@ library(rvinecopulib)
 library(stats)
 library(pracma)
 
-mock_samp <- function(x) "A sample"
-mock_pd <- function(x,y) "A pd"
+mock_samp <- function(x, ...) "A sample"
+mock_pd <- function(x,...) "A pd"
 mock_eval <- function(x,y,z) list(cvar = list(low='low', high='high'), var=list(low=0, high=1))
 
 
@@ -16,43 +16,62 @@ test_that("error_check_calc_quantiles_input throws errors", {
   expect_error(error_check_calc_quantiles_input(quantiles=seq(0.25, 0.75, by=0.25)), NA)
 })
 
+test_that("Vine copula forecast initialization throws errors", {
+  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three'), "data.input*")
+  expect_error(prob_nd_vine_forecast(list(copula=NA, marginals=NA), 'Odessa', 1,  n='three'), "*an integer.")
+  expect_error(prob_nd_vine_forecast(list(copula=NA, marginals=NA), 'Odessa', 1,  n=3000), "Input data must be a matrix*")
+  expect_error(prob_nd_vine_forecast(list(copula=list("a", 1), marginals=NA), 'Odessa', 1,  n=3000,
+                                     training_transform_type="precalcbma", results_transform_type="precalcbma"),
+               "Single-site forecasts*")
+  expect_error(prob_nd_vine_forecast(list(copula=NA, marginals=matrix(c(0,0,0,0), ncol=1)), 'Odessa', 1,  n=3000), "Training data from more than 1 site*")
+})
+
 test_that("Basic vine copula forecast initialization is correct.", {
+  data <- matrix(c(0,0,0,0), ncol=2)
+  with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd,
+            vinecop=function(x, ...) "newly trained", calc_transforms=function(...) list('training'='tr', 'results'='res'),
+            to_uniform=function(...) "To uniform",
+  OUT <- prob_nd_vine_forecast(list(copula=data, marginals=data), 'Odessa', time=1,  n=3000))
+  expect_true(is.prob_nd_vine_forecast((OUT)))
+  expect_equal(length(OUT), 2)
+  expect_equal(OUT$model, "newly trained") # test initialization with untrained input data
+})
+
+test_that("Basic vine copula forecast initialization is correct with pretrained inputs.", {
+  copula <- structure(list("pretrained"), class=c("vinecop"))
+  marg <- structure(list(1), class = "prob_forecast")
+  marginals <- list(marg, marg, marg)
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd,
             vinecop=function(x, ...) NA, calc_transforms=function(...) list('training'='tr', 'results'='res'),
             to_uniform=function(...) "To uniform",
-  OUT <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', time=1,  n=3000))
-  expect_true(is.prob_nd_vine_forecast((OUT)))
-  expect_equal(length(OUT), 2)
+            OUT <- prob_nd_vine_forecast(list(copula=copula, marginals=marginals), 'Odessa', time=1,  n=3000, training_transform_type="precalcbma"))
+  expect_equal(OUT$model[[1]], "pretrained")
+  expect_equal(length(OUT), 3)
 })
 
 test_that("Marginal distribution optional arguments are passed through.", {
   # This actually goes through calc_transforms as well now, which I haven't bothered changing.
+  data <- matrix(c(0,0,0,0), ncol=2)
   with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, CVAR=mock_eval,
-            out <- prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'TX', 'time',
+            out <- prob_nd_vine_forecast(list(copula=data, marginals=data), 'TX', 'time',
                                   training_transform_type="geenens", results_transform_type='geenens', anoption=20))
   expect_equal(out$training_transforms[[1]]$anoption, 20)
   expect_equal(out$training_transforms[[1]]$method, 'geenens')
 })
 
 test_that("Marginal distribution optional arguments are passed through and prob forecast optional arguments are extracted.", {
+  data <- matrix(c(0,0,0,0), ncol=2)
   fake_forecast_class_call <- function(x, location='TX', time='a time', n=3000,  ...){
     prob_nd_vine_forecast(x, location=location, time=time, n=n, ...)}
   with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, CVAR=mock_eval,
-            out <- fake_forecast_class_call(matrix(c(0,0,0,0), ncol=2), location='TX', time='sometime',
+            out <- fake_forecast_class_call(list(copula=data, marginals=data), location='TX', time='sometime',
                                training_transform_type="geenens", results_transform_type='geenens', anoption=20))
   expect_equal(out$training_transforms[[1]]$anoption, 20)
   expect_equal(out$training_transforms[[1]]$method, 'geenens')
-})
-
-test_that("Vine copula forecast initialization throws errors", {
-  with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd, CVAR = mock_eval,
-            vinecop=function(x, ...) NA,
-            expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three')))
-  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=1), 'Odessa', 1,  n=3000))
 })
 
 test_that("get_transform_with_unique_xmin_max handles optional arguments correctly", {
@@ -77,11 +96,11 @@ test_that("get_transform_with_unique_xmin_max handles optional arguments correct
 test_that("calc_transforms handles inputs correctly", {
   mock_get_trans <- function(idx, dat, cdf.method, ...) {if (cdf.method=='a') return(sum(dat[,idx])) else return(diff(dat[,idx]))}
   with_mock(get_transform_with_unique_xmin_max=mock_get_trans,
-            out <-calc_transforms(matrix(c(5, 2, 7, 1), ncol=2), training_transform_type='a', results_transform_type='b', something='else'))
+            out <-calc_transforms(matrix(c(5, 2, 7, 1), ncol=2), d=2, training_transform_type='a', results_transform_type='b', something='else'))
   expect_equal(out$training, list(7, 8))
   expect_equal(out$results, list(-3, -6))
   with_mock(get_transform_with_unique_xmin_max=mock_get_trans,
-            out <-calc_transforms(matrix(c(5, 2, 7, 1), ncol=2), training_transform_type='a', results_transform_type='a'))
+            out <-calc_transforms(matrix(c(5, 2, 7, 1), ncol=2), d=2, training_transform_type='a', results_transform_type='a'))
   expect_equal(out$results, list(7, 8))
 })
 
@@ -178,6 +197,13 @@ test_that('Vine copulas samples are added correctly', {
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
   with_mock(rvinecop=fake_sampling, from_uniform=fake_uniform,
             expect_identical(get_1d_samples(fake_forecast), c(7.5, 2.5)))
+})
+
+test_that('get_1d_samples handles precalculated samples', {
+  dat <- list(n=2, model=NA, d=2, results_transforms=list(5,10))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  with_mock(rvinecop=fake_sampling, from_uniform=fake_uniform,
+            expect_identical(get_1d_samples(fake_forecast, samples.u=matrix(c(0.4, 0.1, 0.5, 0.4, 0.2, 0.5), ncol=2)), c(6, 2.5, 7.5)))
 })
 
 test_that('get_variable_domain_grid calc is correct with one dimension length', {
@@ -377,10 +403,11 @@ test_that("get_alpha_betas truncates gammas to avoid U distributions and handles
 test_that('1d bma forecast quantile calculation is correct', {
   fake_forecast <- structure(list(max_power=10), class = c("prob_forecast", "prob_1d_bma_forecast"))
   q <- c(0.2, 0.4, 0.6, 0.8)
-  with_mock(get_discrete_continuous_model=function(...) return(list(xseq=c(0, 3, 10), pbeta=c(0, 0.3, 1), PoC=0.2)),
+  with_mock(get_discrete_continuous_model=function(...) return(list(xseq=c(0, 3, 10), pbeta=c(0, 0.3, 1), dbeta=c(10, 13, 20), PoC=0.2)),
             OUT <- calc_quantiles(fake_forecast, quantiles=q))
   expect_equal(OUT$q, q)
   expect_equal(OUT$x, c(2, 4, 6, 8))
+  expect_equal(OUT$d, c(12, 14, 16, 18))
 })
 
 test_that("beta distribution geometry code lookup is correct", {
