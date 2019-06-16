@@ -1,4 +1,10 @@
-#' Initialize a time series of power forecasts. Assumes training data already captures
+#' Register ts_forecast constructor to allow for overloading
+#' @param x A ts_forecast object
+ts_forecast <- function(x, ...) {
+  UseMethod("ts_forecast",x)
+}
+
+#' Construct a time series of power forecasts, using input training data. Assumes training data already captures
 #' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
 #'
 #' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
@@ -10,12 +16,66 @@
 #' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
 #' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
 #' @param ... optional arguments to the prob_forecast object
-ts_forecast <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
+ts_forecast.array <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
   # Check inputs
-  if (!is.array(x)) stop("Bad input. x must be an array.")
-  if (!((length(dim(x))==2 & tolower(scale) %in% c("site", "s")) | (length(dim(x))==3 & tolower(scale) %in% c("region", "total", "r", "t")))){
-    stop("Data and scale mis-match. x must be a 2-dimensional array for 1-dimensional forecasts or a 3-dimensional array for n-dimensional forecasts.")
+  if (!((length(dim(x))==3 & tolower(scale) %in% c("region", "total")))){
+    stop("Data and scale mis-match. x must be a 3-dimensional array for n-dimensional forecasts.")
   }
+  if (any(names(MoreTSArgs) %in% c("location", "time"))) stop("MoreTSArgs may not include location or time, which are reserved names.")
+
+  new_ts_forecast(x, start_time, time_step, scale, location, method, sun_up_threshold, MoreTSArgs, ...)
+}
+
+#' Construct a time series of power forecasts, using input training data. Assumes training data already captures
+#' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
+#'
+#' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
+#' @param start_time A lubridate time stamp
+#' @param time_step Time step in hours
+#' @param scale One of 'site', 'region', 'total'
+#' @param location A string
+#' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
+#' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
+#' @param ... optional arguments to the prob_forecast object
+ts_forecast.matrix <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
+  # Check inputs
+  if (tolower(scale) !="site"){
+    stop("Data and scale mis-match. x must be a 2-dimensional array for 1-dimensional forecasts.")
+  }
+
+  new_ts_forecast(x, start_time, time_step, scale, location, method, sun_up_threshold, MoreTSArgs, ...)
+}
+
+
+#' An alternative ts_forecast constructor, which accepts an already calculated list of forecasts.
+#' For future work, this could be integrated with copula post-processing with site-level forecasts.
+#'
+#' @param x A list of prob_forecast objects
+#' @param start_time A lubridate time stamp
+#' @param time_step Time step in hours
+#' @param scale One of 'site', 'region', 'total'
+#' @param location A string
+#' @param method A string
+ts_forecast.list <- function(x, start_time, time_step, scale, location, method) {
+  # Check inputs
+  if (!any(sapply(x, is.prob_forecast))) stop("Bad input. x must be a list of forecasts.")
+
+  sun_up <- sapply(x, is.prob_forecast)
+
+  dat <- list(start_time = start_time,
+              scale = scale,
+              location = location,
+              time_step = time_step,
+              forecasts = x,
+              sun_up = sun_up
+  )
+  structure(dat, class = "ts_forecast")
+}
+
+# Helper constructor to calculate forecast from matrix or array data inputs
+new_ts_forecast <- function(x, start_time, time_step, scale, location, method,
+                                            sun_up_threshold, MoreTSArgs, ...) {
   if (any(names(MoreTSArgs) %in% c("location", "time"))) stop("MoreTSArgs may not include location or time, which are reserved names.")
 
   sun_up <- apply(x, MARGIN=1, FUN=check_sunup, sun_up_threshold=sun_up_threshold)

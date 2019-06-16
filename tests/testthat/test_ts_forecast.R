@@ -15,6 +15,7 @@ sun_up <- c(TRUE, TRUE)
 identity <- function(i) {i}
 
 test_that("ts_forecast object initialization and sun-up calculation", {
+  # Includes testing of the new_ts_forecast subfunction
   with_mock(calc_forecasts = mock_calc,
   OUT <- ts_forecast(array(c(0, NA, 3), dim=c(3, 1)), start_time, time_step, 'site', 'Odessa', 'rank'))
   expect_identical(OUT$forecasts, 'Calculated')
@@ -22,13 +23,28 @@ test_that("ts_forecast object initialization and sun-up calculation", {
   expect_equal(OUT$sun_up, c(FALSE, FALSE, TRUE))
 })
 
-test_that("ts_forecast initialization throws errors", {
-  expect_error(ts_forecast(c(1, 2, 3), start_time, time_step, 'site', 'Odessa', 'rank'), "Bad input*")
+test_that("ts_forecast object initialization and sun-up calculation with a pre-calculated list of forecasts", {
+  forecasts <- list(NA, structure(list(a=1), class="prob_forecast"), NA)
+  OUT <- ts_forecast(forecasts, start_time, time_step, 'site', 'Odessa', 'rank')
+  expect_equal(OUT$sun_up, c(FALSE, TRUE, FALSE))
+})
+
+test_that("ts_forecast array constructor throw errors", {
   expect_error(ts_forecast(array(1:12, dim=c(2, 2, 3)), start_time, time_step, 'site', 'Odessa', 'vine'), "Data and scale mis-match*")
-  expect_error(ts_forecast(array(1:12, dim=c(2, 6)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
-  expect_error(ts_forecast(array(1:12, dim=c(12)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
-  expect_error(ts_forecast(x_multi, start_time, time_step, 'region', 'Odessa', 'vine', MoreTSArgs = list("time"=2)), "MoreTSArgs*")
+  expect_error(ts_forecast(array(1:12, dim=c(2, 1, 2, 3)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
   })
+
+test_that("ts_forecast matrix constructor throws error", {
+  expect_error(ts_forecast(matrix(1:12, nrow=2), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
+})
+
+test_that("ts_forecast list constructor throws error", {
+  expect_error(ts_forecast(list(NA, NA, NA), start_time, time_step, 'region', 'Odessa', 'vine'), "*list of forecasts.")
+})
+
+test_that("ts_forecast constructor helper throws error", {
+  expect_error(new_ts_forecast(x_multi, start_time, time_step, 'region', 'Odessa', 'vine', sun_up_threshold=0.5, MoreTSArgs = list("time"=2)), "MoreTSArgs*")
+})
 
 test_that("ts_forecast calculation inserts NA's when sun is down", {
   with_mock(get_forecast_class= function(x,y) return(list(class=fake_class2, dim='n')),
