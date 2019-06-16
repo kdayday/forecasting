@@ -37,14 +37,11 @@ test_that("ts_forecast calculation inserts NA's when sun is down", {
 })
 
 test_that("ts_forecast class lookup is correct", {
-  expect_identical(get_forecast_class('S', 'kde')$class, prob_1d_kde_forecast)
-  expect_identical(get_forecast_class('S', 'kde')$dim, '1')
-  expect_identical(get_forecast_class('S', 'rank')$class, prob_1d_rank_forecast)
-  expect_identical(get_forecast_class('S', 'bma')$class, prob_1d_bma_forecast)
-  expect_identical(get_forecast_class('r', 'vine')$class, prob_nd_vine_forecast)
-  expect_identical(get_forecast_class('r', 'vine')$dim, 'n')
-  expect_identical(get_forecast_class('Total', 'gaussian')$class, prob_nd_gaussian_forecast)
-  expect_identical(get_forecast_class('t', 'E')$class, prob_nd_empirical_forecast)
+  expect_identical(get_forecast_class('Site', 'kde')$class, prob_1d_kde_forecast)
+  expect_identical(get_forecast_class('Site', 'kde')$dim, '1')
+  expect_identical(get_forecast_class('Site', 'rank')$class, prob_1d_rank_forecast)
+  expect_identical(get_forecast_class('Site', 'bma')$class, prob_1d_bma_forecast)
+  expect_error(get_forecast_class('region', 'vine'), "Not implemented*")
   expect_error(get_forecast_class('T', 't'))
 })
 

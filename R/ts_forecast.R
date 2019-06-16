@@ -86,24 +86,16 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 #' @param method One of 'rank' if scale is 'site', else one of gaussian', 'empirical', 'vine'
 #' @return A function to initialize a forecast of the desired type
 get_forecast_class <- function(scale, method){
-  if (tolower(scale) %in% c("site", "s")){
+  if (tolower(scale) %in% c("site")){
     cls <- switch(tolower(method),
                   "rank" = prob_1d_rank_forecast,
-                  "r" = prob_1d_rank_forecast,
                   "kde" = prob_1d_kde_forecast,
-                  "k" = prob_1d_kde_forecast,
                   "bma" = prob_1d_bma_forecast,
-                  "b" = prob_1d_bma_forecast,
                   stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' ')))
     d <- '1'
-  } else if (tolower(scale) %in% c("region", "total", "r", "t")){
+  } else if (tolower(scale) %in% c("region", "total")){
     cls <- switch(tolower(method),
-           "vine" = prob_nd_vine_forecast,
-           "gaussian" = prob_nd_gaussian_forecast,
-           "empirical" = prob_nd_empirical_forecast,
-           "v" = prob_nd_vine_forecast,
-           "g" = prob_nd_gaussian_forecast,
-           "e" = prob_nd_empirical_forecast,
+           "vine" = stop("Not implemented. ts_forecast doesn't have direct handling for vine copula's new list of inputs. "),
            stop(paste('Forecast type', method, 'not recognized for multi-dimensional forecasts.', sep=' ')))
     d <- 'n'
   } else stop(paste('Forecast scale', scale, 'not recognized.', sep=' '))

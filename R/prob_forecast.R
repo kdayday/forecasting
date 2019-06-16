@@ -115,7 +115,7 @@ get_1d_samples <- function(x, ...) {
 }
 
 #' Register generic joint density function
-#' @param x A Gaussian or vine copula n-dimension prob_forecast object
+#' @param x An n-dimension prob_forecast object
 get_joint_density_grid <- function(x, ...) {
   UseMethod("get_joint_density_grid",x)
 }
@@ -359,71 +359,6 @@ plot_pdf.prob_nd_vine_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95))
   }
 }
 
-# Methods for aggregate probabilistic forecast class using Gaussian copulas
-#------------------------------------------------------------------------------
-
-
-#' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional Gaussian copula.
-#' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
-#'
-#' @param data.input A matrix of training data, [ntrain x 1] for sites, [ntrain x nsites] for regional or total forecasts
-#' @param location A string
-#' @param time A lubridate time stamp
-#' @param n An integer, number of copula samples to take
-#' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_gaussian_forecast <- function(data.input, location, time, n=3000, ...) {
-  stop('Not implemented')
-}
-
-#' Check class
-is.prob_nd_gaussian_forecast <- function(x) inherits(x, "prob_nd_gaussian_forecast")
-
-#' Sample the gaussian copula model and sum to calculate samples of the univariate, aggregate power forecast
-#'
-#' @param x A prob_forecast object
-#' @return A column matrix of aggregate powers
-get_1d_samples.prob_nd_gaussian_forecast <- function(x) {
-  stop('Not implemented')
-}
-
-
-#' Estimate the joint probability density
-#'
-#' @param x A prob_nd_gaussian_forecast object
-#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
-#' @return an joint probability density array
-get_joint_density_grid.prob_nd_gaussian_forecast <- function(x, k=100) {
-  stop('Not implemented')
-}
-
-# Methods for aggregate probabilistic forecast class using empirical copulas
-#------------------------------------------------------------------------------
-
-
-#' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional empirical copula.
-#' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
-#'
-#' @param data.input A matrix of training data, [ntrain x nsites]
-#' @param location A string
-#' @param time A lubridate time stamp
-#' @param n An integer, number of copula samples to take
-#' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_empirical_forecast <- function(data.input, location, time, n=3000) {
-  if (dim(data.input)[2] < 2) stop('Training data from more than 1 site required for empirical copula forecast.')
-  stop('Not implemented')
-}
-
-#' Check class
-is.prob_nd_empirical_forecast <- function(x) inherits(x, "prob_nd_empirical_forecast")
-
-
-#' Sample the empirical copula model and sum to calculate samples of the univariate, aggregate power forecast
-#'
-#' @param x A prob_forecast object
-#' @return A column matrix of aggregate powers
-get_1d_samples.prob_nd_empirical_forecast <- function(x) {
-  stop('Not implemented')
-}
 
 # Methods for univariate probabilistic forecast class
 #------------------------------------------------------------------------------
