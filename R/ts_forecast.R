@@ -171,20 +171,28 @@ length.ts_forecast <- function(x) {
 #'
 #' @param x A ts_forecast object
 #' @param tel vector of telemetry (optional)
-plot.ts_forecast <- function(x, ..., tel=NA) {
+#' @param window (optional) A vector of (start index, end index) to plot certain time window
+plot.ts_forecast <- function(x, tel=NA, window=NA) {
+  if (all(!(is.na(window))) & length(window)!=2) stop("To use time window, must give a vector of starting and ending indices")
+
+  start <- ifelse(all(is.na(window)), 1, window[1])
+  end <- ifelse(all(is.na(window)), length(x), window[2])
+  indices <- start:end
+
   probs <- x$forecasts[[min(which(sapply(x$forecasts, FUN=is.prob_forecast)))]]$quantiles$q
-  plotdata <- matrix(ncol=length(x), nrow=length(probs))
-  for (i in seq_along(x$forecasts)) {
-    if (is.prob_forecast(x$forecasts[[i]])) {
-      plotdata[,i] <- x$forecasts[[i]]$quantiles$x
+  plotdata <- matrix(ncol=length(indices), nrow=length(probs))
+  for (i in seq_along(indices)) {
+    if (is.prob_forecast(x$forecasts[[indices[i]]])) {
+      plotdata[,i] <- x$forecasts[[indices[i]]]$quantiles$x
     } else plotdata[,i] <- 0
   }
-  graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Power [MW]")
+  graphics::plot(NULL, xlim=c(0, length(indices)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Power [MW]")
   fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
                rlab=NULL, start=x$time_step, frequency=1/x$time_step)
   if (any(!is.na(tel))) {
     actuals_time_step <- x$time_step*length(x)/length(tel)
-    graphics::lines(seq(from=actuals_time_step, length.out=length(tel), by=actuals_time_step), tel, col='chocolate3', lwd=2)
+    graphics::lines(seq(from=actuals_time_step, length.out=length(indices)/actuals_time_step, by=actuals_time_step),
+                    tel[((start-1)*actuals_time_step+1):(end*actuals_time_step)], col='chocolate3', lwd=2)
   }
 }
 

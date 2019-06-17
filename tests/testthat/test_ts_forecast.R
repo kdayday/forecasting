@@ -188,6 +188,10 @@ x1 <- structure(list(quantiles=list(x=seq(10, 90, 10), q=quants), n=2), class="p
 x2 <- structure(list(quantiles=list(x=seq(5, 45, 5), q=quants), n=2), class="prob_forecast")
 ts <- structure(list(forecasts=list(NA, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
 
+test_that("Plot ts_forecast throws error", {
+  expect_error(plot(structure(list(NA), class="prob_forecast"), window=c(1,4,5)))
+})
+
 test_that("Time series of values at certain quantile is extracted correctly.", {
   expect_equal(get_quantile_time_series(ts, 20), c(NA, 20, 10))
 })
