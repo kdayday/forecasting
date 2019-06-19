@@ -321,12 +321,30 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
 #' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 CRPS_avg <-function(ts, tel, normalize.by=1, ...){
+  crps_list <- get_metric_time_series(CRPS, ts, tel, normalize.by, ...)
+  return(list(mean=mean(crps_list, na.rm=T), min=min(crps_list, na.rm=T), max=max(crps_list, na.rm=T), sd=stats::sd(crps_list, na.rm=T)))
+}
+
+#' Get a time-series of the forecast performance in terms of one metric
+#' @param metric A function for prob_forecast objects
+#' @param ts A ts_forecast object
+#' @param tel Vector of telemetry
+#' @param normalize.by A vector or scalar
+#' @param metricArgs (optional) a list of additional arguments to the metrics function
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+#' @return A vector
+get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NULL,  ...) {
   x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
   forecast_available <- x$fc
   normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
-  crps_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])/normalize.by[i]))
-  return(list(mean=mean(crps_list), min=min(crps_list), max=max(crps_list), sd=stats::sd(crps_list)))
+
+  metric_list <- sapply(seq_along(forecast_available), function(i) {
+    if (forecast_available[i] & !is.na(x$tel[i])) {
+      args <- c(list(x=ts$forecasts[[x$translate_forecast_index(i)]], tel=x$tel[i]), metricArgs)
+      return(do.call(metric, args)/normalize.by[i])
+    } else return(NA)})
 }
+
 
 #' Get Brier score at a certain probability of exceedance
 #' This is calculated with a constant probability threshold, rather than a constant value threshold
@@ -411,11 +429,8 @@ MAE <-function(ts, tel, normalize.by=1, ...) {
 #' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average IS value
 IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
-  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
-  forecast_available <- x$fc
-  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
-  is_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)/normalize.by[i]})
-  return(list(mean=mean(is_list), min=min(is_list), max=max(is_list), sd=stats::sd(is_list)))
+  is_list <- get_metric_time_series(IS, ts, tel, normalize.by, metricArgs = list(alpha=alpha), ...)
+  return(list(mean=mean(is_list, na.rm=T), min=min(is_list, na.rm=T), max=max(is_list, na.rm=T), sd=stats::sd(is_list, na.rm=T)))
 }
 
 #' Get average sharpness, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
@@ -428,11 +443,8 @@ IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
 #' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average sharpness value
 sharpness_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
-  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
-  forecast_available <- x$fc
-  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
-  sharpness_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {sharpness(ts$forecasts[[i]], alpha=alpha)/normalize.by[i]})
-  return(list(mean=mean(sharpness_list), min=min(sharpness_list), max=max(sharpness_list), sd=stats::sd(sharpness_list)))
+  sharpness_list <- get_metric_time_series(sharpness, ts, tel, normalize.by, metricArgs = list(alpha=alpha), ...)
+  return(list(mean=mean(sharpness_list, na.rm=T), min=min(sharpness_list, na.rm=T), max=max(sharpness_list, na.rm=T), sd=stats::sd(sharpness_list, na.rm=T)))
 }
 
 #' Plot diagonal line diagram of quantiles + observations

@@ -138,16 +138,16 @@ test_that("Vine copula quantile calculation adjusts for inputs", {
 test_that("Interval score calculation is correct.", {
   dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
-  expect_equal(IS(fake_forecast, actual=15, alpha=0.2), 80)
-  expect_equal(IS(fake_forecast, actual=9, alpha=0.2), 80+2/0.2)
-  expect_equal(IS(fake_forecast, actual=95, alpha=0.2), 80+2/0.2*5)
+  expect_equal(IS(fake_forecast, tel=15, alpha=0.2), 80)
+  expect_equal(IS(fake_forecast, tel=9, alpha=0.2), 80+2/0.2)
+  expect_equal(IS(fake_forecast, tel=95, alpha=0.2), 80+2/0.2*5)
 })
 
 test_that("Interval score calculation throws error for bad input", {
   dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
   fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
-  expect_error(IS(fake_forecast, actual=95, alpha=10), "Alpha.*")
-  expect_error(IS(fake_forecast, actual=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
+  expect_error(IS(fake_forecast, tel=95, alpha=10), "Alpha.*")
+  expect_error(IS(fake_forecast, tel=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
 })
 
 test_that("Sharpness calculation is correct.", {

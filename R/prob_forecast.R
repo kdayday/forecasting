@@ -12,23 +12,24 @@ length.prob_forecast <- function(x){
 #' Calculate interval score for an interval from alpha/2 to 1-alpha/2. Negatively oriented
 #' First term: sharpness, second and third terms: penalty for reliability.
 #'
-#' @param x A ts_forecast object
+#' @param x A prob_forecast object
 #' @param actual The realized value
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
-IS <- function(x, actual, alpha) {
+IS <- function(x, tel, alpha) {
   eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
   l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
   u <- x$quantiles$x[abs(x$quantiles$q-(1-alpha/2))<eps]
   if (length(l)==0 | length(u)==0) stop("Requested quantile is not in the forecast's list of quantiles.")
-  is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
+  is <- (u-l) + (2/alpha)*(l-tel)*(tel < l) + (2/alpha)*(tel-u)*(tel > u)
 }
 
 #' Calculate sharpness for an interval from alpha/2 to 1-alpha/2. Negatively oriented
 #'
-#' @param x A ts_forecast object
+#' @param x A prob_forecast object
+#' @param tel (unneeded) For calling signature consistency with other metrics
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
-sharpness <- function(x, alpha) {
+sharpness <- function(x, tel, alpha) {
   eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
   l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
@@ -46,8 +47,7 @@ trapz <- function(width, height) {
 #' Estimate CRPS
 #'
 #' @param x A prob_forecast object
-#' @param tel Value or vector of telemetry values
-#' @param quantiles (optional) A sequence of (0,1) values to estimate the cumulative distribution for the numerical evaluation of CRPS
+#' @param tel Telemetry value
 CRPS <- function(x, tel) {
   y <- x$quantiles$x
 
