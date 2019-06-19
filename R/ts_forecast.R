@@ -447,16 +447,18 @@ sharpness_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
   return(list(mean=mean(sharpness_list, na.rm=T), min=min(sharpness_list, na.rm=T), max=max(sharpness_list, na.rm=T), sd=stats::sd(sharpness_list, na.rm=T)))
 }
 
-#' Plot diagonal line diagram of quantiles + observations
+#' Plot diagonal line diagram of quantiles + observations (i.e., a P-P plot)
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 plot_reliability <- function(ts, tel, ...) {
   x <- get_quantile_reliability(ts, tel, ...)
 
-  graphics::plot(x$quantiles, x$quantiles, type="l", lty=2, xlab="Nominal",
-                 ylab="Observed")
-  graphics::lines(x$quantiles[1:(length(x$quantiles)-1)], cumsum(x$hit_rate)[1:(length(x$quantiles)-1)], type='b', lty=1, pch=1)
+  ggplot2::ggplot(data.frame(x=x$quantiles, y=x$quantiles), ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_line() +
+    ggplot2::geom_point(data=data.frame(x=x$quantiles[1:(length(x$quantiles)-1)], y=cumsum(x$hit_rate)[1:(length(x$quantiles)-1)]), shape=1) +
+    ggplot2::xlab("Nominal Cumulative Distribution") +
+    ggplot2::ylab("Observed Cumulative Distribution")
 }
 
 
