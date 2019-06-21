@@ -15,6 +15,7 @@ sun_up <- c(TRUE, TRUE)
 identity <- function(i) {i}
 
 test_that("ts_forecast object initialization and sun-up calculation", {
+  # Includes testing of the new_ts_forecast subfunction
   with_mock(calc_forecasts = mock_calc,
   OUT <- ts_forecast(array(c(0, NA, 3), dim=c(3, 1)), start_time, time_step, 'site', 'Odessa', 'rank'))
   expect_identical(OUT$forecasts, 'Calculated')
@@ -22,13 +23,28 @@ test_that("ts_forecast object initialization and sun-up calculation", {
   expect_equal(OUT$sun_up, c(FALSE, FALSE, TRUE))
 })
 
-test_that("ts_forecast initialization throws errors", {
-  expect_error(ts_forecast(c(1, 2, 3), start_time, time_step, 'site', 'Odessa', 'rank'), "Bad input*")
+test_that("ts_forecast object initialization and sun-up calculation with a pre-calculated list of forecasts", {
+  forecasts <- list(NA, structure(list(a=1), class="prob_forecast"), NA)
+  OUT <- ts_forecast(forecasts, start_time, time_step, 'site', 'Odessa', 'rank')
+  expect_equal(OUT$sun_up, c(FALSE, TRUE, FALSE))
+})
+
+test_that("ts_forecast array constructor throw errors", {
   expect_error(ts_forecast(array(1:12, dim=c(2, 2, 3)), start_time, time_step, 'site', 'Odessa', 'vine'), "Data and scale mis-match*")
-  expect_error(ts_forecast(array(1:12, dim=c(2, 6)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
-  expect_error(ts_forecast(array(1:12, dim=c(12)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
-  expect_error(ts_forecast(x_multi, start_time, time_step, 'region', 'Odessa', 'vine', MoreTSArgs = list("time"=2)), "MoreTSArgs*")
+  expect_error(ts_forecast(array(1:12, dim=c(2, 1, 2, 3)), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
   })
+
+test_that("ts_forecast matrix constructor throws error", {
+  expect_error(ts_forecast(matrix(1:12, nrow=2), start_time, time_step, 'region', 'Odessa', 'vine'), "Data and scale mis-match*")
+})
+
+test_that("ts_forecast list constructor throws error", {
+  expect_error(ts_forecast(list(NA, NA, NA), start_time, time_step, 'region', 'Odessa', 'vine'), "*list of forecasts.")
+})
+
+test_that("ts_forecast constructor helper throws error", {
+  expect_error(new_ts_forecast(x_multi, start_time, time_step, 'region', 'Odessa', 'vine', sun_up_threshold=0.5, MoreTSArgs = list("time"=2)), "MoreTSArgs*")
+})
 
 test_that("ts_forecast calculation inserts NA's when sun is down", {
   with_mock(get_forecast_class= function(x,y) return(list(class=fake_class2, dim='n')),
@@ -37,14 +53,11 @@ test_that("ts_forecast calculation inserts NA's when sun is down", {
 })
 
 test_that("ts_forecast class lookup is correct", {
-  expect_identical(get_forecast_class('S', 'kde')$class, prob_1d_kde_forecast)
-  expect_identical(get_forecast_class('S', 'kde')$dim, '1')
-  expect_identical(get_forecast_class('S', 'rank')$class, prob_1d_rank_forecast)
-  expect_identical(get_forecast_class('S', 'bma')$class, prob_1d_bma_forecast)
-  expect_identical(get_forecast_class('r', 'vine')$class, prob_nd_vine_forecast)
-  expect_identical(get_forecast_class('r', 'vine')$dim, 'n')
-  expect_identical(get_forecast_class('Total', 'gaussian')$class, prob_nd_gaussian_forecast)
-  expect_identical(get_forecast_class('t', 'E')$class, prob_nd_empirical_forecast)
+  expect_identical(get_forecast_class('Site', 'kde')$class, prob_1d_kde_forecast)
+  expect_identical(get_forecast_class('Site', 'kde')$dim, '1')
+  expect_identical(get_forecast_class('Site', 'rank')$class, prob_1d_rank_forecast)
+  expect_identical(get_forecast_class('Site', 'bma')$class, prob_1d_bma_forecast)
+  expect_error(get_forecast_class('region', 'vine'), "Not implemented*")
   expect_error(get_forecast_class('T', 't'))
 })
 
@@ -88,12 +101,16 @@ test_that("Check sun-up works correctly", {
 test_that("Equalize telemetry throws error on input checks.", {
   expect_error(equalize_telemetry_forecast_length(tel=c(10, 15), fc=c(3, 4, 5)), '*even multiple*')
   expect_error(equalize_telemetry_forecast_length(tel=1:15, fc=c(3, 4, 5)), '*even multiple*')
+  expect_error(equalize_telemetry_forecast_length(tel=4, fc=1:3), '*even multiple*') # Test single value rather than vector inputs
+  expect_error(equalize_telemetry_forecast_length(tel=1:4, fc=3), '*even multiple*') # Test single value rather than vector inputs
   expect_error(equalize_telemetry_forecast_length(tel=c(10, 15), fc=c(3, 4), align="end of hour"), 'Unknown method*')
 })
 
 test_that("Equalize telemetry does nothing for equal length forecasts", {
   expect_equal(equalize_telemetry_forecast_length(tel=1:4, fc=5:8)[c('tel', 'fc', 'tel_2_fc')],
                list(tel=1:4, fc=5:8, tel_2_fc=1))
+  expect_equal(equalize_telemetry_forecast_length(tel=1, fc=5)[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=1, fc=5, tel_2_fc=1))
 })
 
 test_that("Equalize telemetry calculation is correct for top of hour", {
@@ -103,16 +120,18 @@ test_that("Equalize telemetry calculation is correct for top of hour", {
                list(tel=c(1, 0, 2, 1, 3, 3, 9, 9), fc=c(1,1,1,1,2,2,2,2), tel_2_fc=4))
 })
 
-test_that("Equalize telemetry calculation is correct for half-hour alignment", {
-  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=TRUE, align="half-hour-backend")[c('tel', 'fc', 'tel_2_fc')],
-               list(tel=c(NaN, 18, 34)/4, fc=1:3, tel_2_fc=4))
-  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=FALSE, align="half-hour-backend")[c('tel', 'fc', 'tel_2_fc')],
-               list(tel=1:12, fc=c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, NA, NA), tel_2_fc=4))
+test_that("Equalize telemetry calculation handles length rather than vector inputs", {
+  expect_equal(equalize_telemetry_forecast_length(tel=c(1, 0, 2, 1, 3, 3, 9, 9), fc=2, agg=TRUE, align="end-of-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=c(1, 6), fc=2, tel_2_fc=4))
+  expect_equal(equalize_telemetry_forecast_length(tel=8, fc=1:2, agg=FALSE, align="end-of-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=8, fc=c(1,1,1,1,2,2,2,2), tel_2_fc=4))
 })
 
-test_that("Equalize telemetry calculation is correct for half-hour frontend alignment", {
-  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=TRUE, align="half-hour-frontend")[c('tel', 'fc', 'tel_2_fc')],
-               list(tel=c(18, 34, NaN)/4, fc=1:3, tel_2_fc=4))
+test_that("Equalize telemetry calculation is correct for half-hour alignment", {
+  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=TRUE, align="half-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=c(NaN, 18, 34)/4, fc=1:3, tel_2_fc=4))
+  expect_equal(equalize_telemetry_forecast_length(tel=1:12, fc=1:3, agg=FALSE, align="half-hour")[c('tel', 'fc', 'tel_2_fc')],
+               list(tel=1:12, fc=c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, NA, NA), tel_2_fc=4))
 })
 
 test_that("Equalize telemetry output translation functions are correct", {
@@ -122,12 +141,27 @@ test_that("Equalize telemetry output translation functions are correct", {
   func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=FALSE, align="end-of-hour")$translate_forecast_index
   expect_equal(func(1:12), c(1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3))
 
-  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=TRUE, align="half-hour-backend")$translate_forecast_index
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=TRUE, align="half-hour")$translate_forecast_index
   expect_equal(func(1:12), 1:12)
 
-  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=FALSE, align="half-hour-backend")$translate_forecast_index
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=1:2, agg=FALSE, align="half-hour")$translate_forecast_index
   expect_equal(func(1:12), c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4))
 })
+
+test_that("Equalize telemetry output translation functions are correct for length rather than vector inputs", {
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=2, agg=TRUE, align="end-of-hour")$translate_forecast_index
+  expect_equal(func(1:12), 1:12)
+
+  func <- equalize_telemetry_forecast_length(tel=8, fc=1:2, agg=FALSE, align="end-of-hour")$translate_forecast_index
+  expect_equal(func(1:12), c(1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3))
+
+  func <- equalize_telemetry_forecast_length(tel=1:8, fc=2, agg=TRUE, align="half-hour")$translate_forecast_index
+  expect_equal(func(1:12), 1:12)
+
+  func <- equalize_telemetry_forecast_length(tel=8, fc=1:2, agg=FALSE, align="half-hour")$translate_forecast_index
+  expect_equal(func(1:12), c(1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4))
+})
+
 
 test_that("Equalize telemetry calculation handles NA's correctly", {
   expect_equal(equalize_telemetry_forecast_length(tel=c(1:4, NaN), fc=1:5, align="end-of-hour")[c('tel', 'fc', 'tel_2_fc')],
@@ -154,6 +188,10 @@ x1 <- structure(list(quantiles=list(x=seq(10, 90, 10), q=quants), n=2), class="p
 x2 <- structure(list(quantiles=list(x=seq(5, 45, 5), q=quants), n=2), class="prob_forecast")
 ts <- structure(list(forecasts=list(NA, x1, x2), sun_up=c(FALSE, TRUE, TRUE)), class='ts_forecast')
 
+test_that("Plot ts_forecast throws error", {
+  expect_error(plot(structure(list(NA), class="prob_forecast"), window=c(1,4,5)))
+})
+
 test_that("Time series of values at certain quantile is extracted correctly.", {
   expect_equal(get_quantile_time_series(ts, 20), c(NA, 20, 10))
 })
@@ -172,7 +210,7 @@ test_that("Equalize normalization factor is correct", {
 test_that("Avg CRPS score handles telemetry longer than forecast", {
   tel <- c(25, 30, 35)
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=tel, tel_2_fc=2, translate_forecast_index=identity)),
-            CRPS=function(x, y) return(y),
+            CRPS=function(x, tel, ...) return(tel),
             expect_equal(CRPS_avg(ts, tel=tel, agg=FALSE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)))),
             expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)))))
 })

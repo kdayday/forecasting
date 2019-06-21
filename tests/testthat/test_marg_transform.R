@@ -29,11 +29,11 @@ test_that("Input to uniform-to-variable transform must be [0,1]", {
 })
 
 test_that("from_uniform transform is correct", {
-  expect_equal(from_uniform(test_obj, c(0.25, 0.75)), c(2.5, 7.5))
+  expect_equal(from_uniform(test_obj, c(0.25, NaN, 0.75)), c(2.5, NaN, 7.5))
 })
 
 test_that("to_uniform transform is correct", {
-  expect_equal(to_uniform(test_obj, c(3, 8)), c(0.3, 0.8))
+  expect_equal(to_uniform(test_obj, c(NaN, 3, 8)), c(NaN, 0.3, 0.8))
 })
 
 test_that("KDE uniform transform gives warning if evaluation points are outside bounds of the cdf", {

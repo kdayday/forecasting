@@ -1,8 +1,8 @@
 #' Look-up function for the methods implemented here
 #'
-#' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth'
+#' @param method Identifying name: one of 'empirical', 'kde1d', 'geenens', 'kernsmooth', 'precalcbma"
 #' @return A function
-kde_lookup <- function(method) {
+marginal_lookup <- function(method) {
   if (class(method) != 'character') stop('Method selection must be a character name.')
 
   func <- switch(method,
@@ -10,12 +10,29 @@ kde_lookup <- function(method) {
                  kde1d = probkde1d,
                  geenens = probtranskde,
                  kernsmooth = probkde,
+                 precalcbma = probprecalc,
                  stop(paste("Marginal distribution estimator ", method, " not recognized.", sep='')))
   return(func)
 }
 
 # -------------------------------------------------------------------------
 # Containers for existing distribution estimation functions
+
+#' Reformat from an existing prob_1d_bma_forecast object
+#'
+#' @param x A vector of samples
+#' @param ... Optional inputs to the bkde function
+#' @return A list of the evaluation points, density, and cumulative distribution
+probprecalc <- function(x, ...) {
+  # Add backwards compatibility to calculate density with the same x vector
+  if (!(is.prob_1d_bma_forecast(x))) stop("Precalculated marginal lookup currently just set up for BMA forecasts. ")
+  if (!("d" %in% names(x$quantiles))) {
+    quantiles <- calc_quantiles(x)
+  } else quantiles <- x$quantiles
+
+  return(list(x=quantiles$x, d=quantiles$d, u=quantiles$q))
+}
+
 
 #' Get continuous KDE using KernSmooth based on https://vita.had.co.nz/papers/density-estimation.pdf
 #'
@@ -44,13 +61,13 @@ probkde1d <- function(x, ...) {
 #' @param x A vector of samples
 #' @param xmax maximum
 #' @return A list of the evaluation points, density, and cumulative distribution
-probempirical <- function(x, xmax=max(ceiling(x))) {
+probempirical <- function(x, xmax=max(x, na.rm = T)) {
 
   xmax <- check_xmax(x, xmax)
-  if (xmax > max(x)) {
-    xseq <- c(0, sort(x), xmax)
+  if (xmax > max(x, na.rm=T)) {
+    xseq <- c(0, sort(x, na.last=NA), xmax)
   } else {
-    xseq <- c(0, sort(x))
+    xseq <- c(0, sort(x, na.last=NA))
   }
 
   # Aggregate to combine duplicate values
@@ -63,9 +80,9 @@ probempirical <- function(x, xmax=max(ceiling(x))) {
 
 check_xmax <- function (x, xmax){
   # Pick the largest maximum value, in case actual data exceeds rating
-  if (!(is.nan(xmax)) & xmax < max(ceiling(x))){
-    warning(paste("To fit given data points, xmax of ", xmax, " being replaced with ", max(ceiling(x)), sep=''))
-    xmax <- max(ceiling(x))
+  if (!(is.nan(xmax)) & xmax < max(x, na.rm=T)){
+    warning(paste("To fit given data points, xmax of ", xmax, " being replaced with ", max(x, na.rm=T), sep=''))
+    xmax <- max(x, na.rm=T)
   }
   return(xmax)
 }
@@ -156,7 +173,7 @@ probtranskde <- function(x, xmax, scale=0.9999, zero_offset=0.0001, max_scaler=2
 get_output_seq <- function(x, xmax, n.res, scaler) {
   # On (0, inf) for log function
   if (is.nan(xmax)) {
-    return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res)*max(x)*scaler)
+    return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res)*max(x, na.rm=T)*scaler)
   } else { # On (0,1) for probit function
     return(seq(1/(n.res+1),n.res/(n.res+1),length=n.res))
   }

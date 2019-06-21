@@ -12,23 +12,24 @@ length.prob_forecast <- function(x){
 #' Calculate interval score for an interval from alpha/2 to 1-alpha/2. Negatively oriented
 #' First term: sharpness, second and third terms: penalty for reliability.
 #'
-#' @param x A ts_forecast object
+#' @param x A prob_forecast object
 #' @param actual The realized value
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
-IS <- function(x, actual, alpha) {
+IS <- function(x, tel, alpha) {
   eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
   l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
   u <- x$quantiles$x[abs(x$quantiles$q-(1-alpha/2))<eps]
   if (length(l)==0 | length(u)==0) stop("Requested quantile is not in the forecast's list of quantiles.")
-  is <- (u-l) + (2/alpha)*(l-actual)*(actual < l) + (2/alpha)*(actual-u)*(actual > u)
+  is <- (u-l) + (2/alpha)*(l-tel)*(tel < l) + (2/alpha)*(tel-u)*(tel > u)
 }
 
 #' Calculate sharpness for an interval from alpha/2 to 1-alpha/2. Negatively oriented
 #'
-#' @param x A ts_forecast object
+#' @param x A prob_forecast object
+#' @param tel (unneeded) For calling signature consistency with other metrics
 #' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
-sharpness <- function(x, alpha) {
+sharpness <- function(x, tel, alpha) {
   eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
   l <- x$quantiles$x[abs(x$quantiles$q-alpha/2)<eps]
@@ -46,8 +47,7 @@ trapz <- function(width, height) {
 #' Estimate CRPS
 #'
 #' @param x A prob_forecast object
-#' @param tel Value or vector of telemetry values
-#' @param quantiles (optional) A sequence of (0,1) values to estimate the cumulative distribution for the numerical evaluation of CRPS
+#' @param tel Telemetry value
 CRPS <- function(x, tel) {
   y <- x$quantiles$x
 
@@ -110,12 +110,12 @@ is.prob_forecast <- function(x) inherits(x, "prob_forecast")
 
 #' Register generic sample function
 #' @param x A prob_forecast object
-get_1d_samples <- function(x) {
+get_1d_samples <- function(x, ...) {
     UseMethod("get_1d_samples",x)
 }
 
 #' Register generic joint density function
-#' @param x A Gaussian or vine copula n-dimension prob_forecast object
+#' @param x An n-dimension prob_forecast object
 get_joint_density_grid <- function(x, ...) {
   UseMethod("get_joint_density_grid",x)
 }
@@ -149,27 +149,43 @@ error_check_calc_quantiles_input <- function(quantiles){
 
 #' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional vine copula.
 #' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
+#' The "copula" field of the data.input list can be a matrix of training data [ntrain x nsites] OR a pre-trained vinecop model
+#' The "marginals" field of the data.input list can be a matrix of training data [ntrain x nsites] OR a list of single-site prob_forecast objects
 #'
-#' @param data.input A matrix of training data [ntrain x nsites]
+#' @param data.input A list of "copula" and "marginals" inputs
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param training_transform_type Transform of training data into uniform domain (see marg_transform "cdf.method")
 #' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "cdf.method")
 #' @param n An integer, number of copula samples to take
+#' @param samples.u (optional) A precalculated set of n-dimensional CDF samples from rvinecop
 #' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
 prob_nd_vine_forecast <- function(data.input, location, time,
-                                  training_transform_type="empirical", results_transform_type='empirical', n=3000, ...) {
+                                  training_transform_type="empirical", results_transform_type='empirical', n=1e4,
+                                  samples.u=NA, ...) {
+  if (length(names(data.input))==0 | !all(names(data.input) == c("copula", "marginals"))) stop("data.input must be a list with 'copula' and 'marginals' inputs")
   if (!is.numeric(n)) stop('n (number of samples) must be an integer.')
-  if (class(data.input)!='matrix') stop('Input data must be a matrix')
-  if (dim(data.input)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
+  if (training_transform_type == "precalcbma" | results_transform_type == "precalcbma") {
+    if (!all(sapply(data.input$marginals, is.prob_forecast))) stop("Single-site forecasts must be provided to use precalculated marginals. ")
+    d <- length(data.input$marginals)
+  } else {
+    if (class(data.input$marginals)!='matrix') stop('Input data must be a matrix if marginals are to be calculated.')
+    if (dim(data.input$marginals)[2] < 2) stop('Training data from more than 1 site required for vine copula forecast.')
+    d <- dim(data.input$marginals)[2]
+  }
 
-  tr <- calc_transforms(data.input, training_transform_type, results_transform_type, ...)
+  tr <- calc_transforms(data.input$marginals, d, training_transform_type, results_transform_type, ...)
   training_transforms <- tr$training
   results_transforms <- tr$results
 
-  uniform_dat <- mapply(function(n, t) {to_uniform(t, data.input[,n])}, colnames(data.input, do.NULL=FALSE), training_transforms)
-  model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
+  if ("vinecop" %in% class(data.input$copula)) {
+    model <- data.input$copula
+  } else {
+    uniform_dat <- sapply(seq_along(training_transforms),
+                          FUN=function(i) {to_uniform(training_transforms[[i]], data.input$copula[,i])}, simplify = "array")
+    model <- rvinecopulib::vinecop(uniform_dat, family_set="all")
+  }
 
   # Initialize probabilistic forecast
   dat <- list(training_transforms = training_transforms,
@@ -177,13 +193,13 @@ prob_nd_vine_forecast <- function(data.input, location, time,
               location = location,
               time = time,
               model = model,
-              d = dim(data.input)[2],
+              d = d,
               n=n
               )
   x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  x$quantiles <- calc_quantiles(x)
+  x$quantiles <- calc_quantiles(x, samples.u=samples.u)
 
   return(x)
 }
@@ -194,17 +210,18 @@ is.prob_nd_vine_forecast <- function(x) inherits(x, "prob_nd_vine_forecast")
 #' Calculate lists of variable-to-uniform domain transforms for all dimensions
 #'
 #' @param dat training data matrix
+#' @param d Number of dimensions
 #' @param training_transform_type Transform of training data into uniform domain (see marg_transform "cdf.method")
 #' @param results_transform_type Transform of copula results back into variable domain (see marg_transform "cdf.method")
 #' @param ... Optional arguments to marg_transform
 #' @return list of "training" and "results" transforms to use.
-calc_transforms <- function(dat, training_transform_type, results_transform_type, ...) {
-  training <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, cdf.method=training_transform_type, ...)
+calc_transforms <- function(dat, d, training_transform_type, results_transform_type, ...) {
+  training <- lapply(seq_len(d), FUN=get_transform_with_unique_xmin_max, dat=dat, cdf.method=training_transform_type, ...)
   # Results transforms must be subsequently updated if desired
   if (results_transform_type==training_transform_type) {
     results <- training
   } else {
-    results <- lapply(seq_len(dim(dat)[2]), FUN=get_transform_with_unique_xmin_max, dat=dat, cdf.method=results_transform_type, ...)
+    results <- lapply(seq_len(d), FUN=get_transform_with_unique_xmin_max, dat=dat, cdf.method=results_transform_type, ...)
   }
   return(list('training'=training, 'results'=results))
 }
@@ -220,18 +237,22 @@ get_transform_with_unique_xmin_max <- function(idx, dat, cdf.method, ...) {
   # Use unique xmin/xmax values if vectors are given
   if ('xmin' %in% names(args) & length(args[['xmin']]) > 1) {args[['xmin']] <- args[['xmin']][idx]}
   if ('xmax' %in% names(args) & length(args[['xmax']]) > 1) {args[['xmax']] <- args[['xmax']][idx]}
-  return(do.call(marg_transform, c(list(dat[,idx], cdf.method), args))) # repackage arguments into single list for do.call
+  # Subset the proper column if data is a matrix or item if it is a list
+  data <- if (class(dat)=='matrix') {dat[,idx]} else {dat[[idx]]}
+  return(do.call(marg_transform, c(list(data, cdf.method), args))) # repackage arguments into single list for do.call
 }
 
 #' Sample the vine copula model and sum to calculate samples of the univariate, aggregate power forecast
 #'
 #' @return A column matrix of aggregate powers
-get_1d_samples.prob_nd_vine_forecast <- function(x) {
-  samples.u <- rvinecopulib::rvinecop(x$n, x$model)
-  samples.xs <- matrix(nrow = x$n, ncol = length(x))
-  for (i in 1:length(x)){
-    samples.xs[,i] <- from_uniform(x$results_transforms[[i]], samples.u[,i])
+get_1d_samples.prob_nd_vine_forecast <- function(x, samples.u=NA) {
+  # Get new samples from the copula, if needed.
+  if (!(is.numeric(samples.u))) {
+    samples.u <- rvinecopulib::rvinecop(x$n, x$model)
   }
+
+  samples.xs <- sapply(seq_len(length(x)), FUN=function(i) return(from_uniform(x$results_transforms[[i]], samples.u[,i])), simplify="array")
+
   samples.x <- rowSums(samples.xs)
   return(samples.x)
 }
@@ -239,13 +260,17 @@ get_1d_samples.prob_nd_vine_forecast <- function(x) {
 #' Calculate forecast quantiles from samples of the vine copula
 #'
 #' @param x prob_nd_vine_forecast object
-#' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with cVaR calculation
+#' @param samples (optional) previously obtained 1-D samples to use instead of new sampling, e.g. for coordination with cVaR calculation
+#' @param samples.u (optional) previously obtained n-d samples to use instead of new sampling, e.g. for static vine copula model.
+#' samples overrides samples.u if both are given
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, samples.u=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
-  if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
+  if (!(is.numeric(samples))) {samples <- get_1d_samples(x, samples.u)}
+
+  # Do I want this to be type 4 instead?
   xseq <- stats::quantile(samples, probs=quantiles, type=1, names=TRUE)
 
   return(list(x=xseq, q=quantiles))
@@ -334,71 +359,6 @@ plot_pdf.prob_nd_vine_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95))
   }
 }
 
-# Methods for aggregate probabilistic forecast class using Gaussian copulas
-#------------------------------------------------------------------------------
-
-
-#' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional Gaussian copula.
-#' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
-#'
-#' @param data.input A matrix of training data, [ntrain x 1] for sites, [ntrain x nsites] for regional or total forecasts
-#' @param location A string
-#' @param time A lubridate time stamp
-#' @param n An integer, number of copula samples to take
-#' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_gaussian_forecast <- function(data.input, location, time, n=3000, ...) {
-  stop('Not implemented')
-}
-
-#' Check class
-is.prob_nd_gaussian_forecast <- function(x) inherits(x, "prob_nd_gaussian_forecast")
-
-#' Sample the gaussian copula model and sum to calculate samples of the univariate, aggregate power forecast
-#'
-#' @param x A prob_forecast object
-#' @return A column matrix of aggregate powers
-get_1d_samples.prob_nd_gaussian_forecast <- function(x) {
-  stop('Not implemented')
-}
-
-
-#' Estimate the joint probability density
-#'
-#' @param x A prob_nd_gaussian_forecast object
-#' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
-#' @return an joint probability density array
-get_joint_density_grid.prob_nd_gaussian_forecast <- function(x, k=100) {
-  stop('Not implemented')
-}
-
-# Methods for aggregate probabilistic forecast class using empirical copulas
-#------------------------------------------------------------------------------
-
-
-#' Initialize a probabilistic power forecast for a specific time point, using an n-dimensional empirical copula.
-#' Assumes training data already captures differences in magnitude (i.e., power rating) amongst sites.
-#'
-#' @param data.input A matrix of training data, [ntrain x nsites]
-#' @param location A string
-#' @param time A lubridate time stamp
-#' @param n An integer, number of copula samples to take
-#' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_empirical_forecast <- function(data.input, location, time, n=3000) {
-  if (dim(data.input)[2] < 2) stop('Training data from more than 1 site required for empirical copula forecast.')
-  stop('Not implemented')
-}
-
-#' Check class
-is.prob_nd_empirical_forecast <- function(x) inherits(x, "prob_nd_empirical_forecast")
-
-
-#' Sample the empirical copula model and sum to calculate samples of the univariate, aggregate power forecast
-#'
-#' @param x A prob_forecast object
-#' @return A column matrix of aggregate powers
-get_1d_samples.prob_nd_empirical_forecast <- function(x) {
-  stop('Not implemented')
-}
 
 # Methods for univariate probabilistic forecast class
 #------------------------------------------------------------------------------
@@ -521,9 +481,11 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001
 
   if (all(is.na(model))) model <- get_discrete_continuous_model(x)
 
-  xseq<- stats::approx(x=model$pbeta, y=model$xseq, xout=quantiles, yleft=0)$y # yright=x$max_power
+  xseq <- stats::approx(x=model$pbeta, y=model$xseq, xout=quantiles, yleft=0)$y # yright=x$max_power
 
-  return(list(x=xseq, q=quantiles))
+  d <- stats::approx(x=model$xseq, y=model$dbeta, xout=xseq, yleft=0, yright = 0)$y
+
+  return(list(x=xseq, q=quantiles, d=d))
 }
 
 #' @param x prob_1d_bma_forecast object
@@ -676,7 +638,7 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F, di
 prob_1d_kde_forecast <- function(data.input, location, time, cdf.method='geenens', ...) {
   members <- qc_input(data.input)
 
-  func <- kde_lookup(cdf.method)
+  func <- marginal_lookup(cdf.method)
   # Get selected KDE
   model <- func(members, ...)
 

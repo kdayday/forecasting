@@ -6,33 +6,60 @@ library(kde1d)
 library(pracma)
 
 test_that("kde lookup throws error", {
-  expect_error(kde_lookup(4), "Method selection*")
+  expect_error(marginal_lookup(4), "Method selection*")
 })
 
 # -----------------------------------------------------------------------------
 # Test containers for existing distribution estimation functions
 
+test_that("probprecalc throws error", {
+  expect_error(probprecalc(1:4), "Precalculated*")
+})
+
+test_that("probprecalc handles inputs with and without density precalculated", {
+  fake_input <- structure(list("quantiles"=list(x=1:4, q=5:8)), class=c("prob_1d_bma_forecast"))
+  with_mock(calc_quantiles=function(y, ...) return(list(x=y$quantiles$x, q=y$quantiles$q, d=3:6)),
+            expect_equal(probprecalc(fake_input), list(x=1:4, d=3:6, u=5:8)))
+  fake_input <- structure(list("quantiles"=list(x=1:4, d=1:4, q=5:8)), class=c("prob_1d_bma_forecast"))
+  with_mock(calc_quantiles=function(y, ...) return(list(x=y$quantiles$x, q=y$quantiles$q, d=3:6)),
+            expect_equal(probprecalc(fake_input), list(x=1:4, d=1:4, u=5:8)))
+})
+
 test_that("probempirical handles a given xmax", {
-  out <- probempirical(c(1,2, 4), xmax=5)
+  with_mock(check_xmax=function(x, xmax) return(xmax),
+    out <- probempirical(c(1,2, 4), xmax=5))
   expect_equal(out$x, c(0, 1, 2, 4, 5))
   expect_equal(out$u, c(0, 0.25, 0.5, 0.75, 1))
 })
 
-# These are now inadvertently testing check_xmax....
 test_that("probempirical replaces given xmax with actual data maximum", {
-  out <- probempirical(c(1, 6), xmax=5)
-  expect_equal(out$x, c(0, 1,  6))
+  with_mock(check_xmax=function(x, xmax) return(5.2),
+            out <- probempirical(c(1, 5.2), xmax=5))
+  expect_equal(out$x, c(0, 1,  5.2))
   expect_equal(out$u, c(0, 0.5, 1))
 })
 
 test_that("probempirical handles default max", {
-  out <- probempirical(c(1, 2, 4, 5))
+  with_mock(check_xmax=function(x, xmax) return(5),
+    out <- probempirical(c(1, 2, 4, 5)))
+  expect_equal(out$x, c(0, 1,  2, 4, 5))
+  expect_equal(out$u, c(0, 0.25, 0.5, 0.75, 1))
+})
+
+test_that("probempirical ignores missing data", {
+  with_mock(check_xmax=function(x, xmax) return(xmax),
+    out <- probempirical(c(NaN, 1, 6), xmax=5))
+  expect_equal(out$x, c(0, 1,  6))
+  expect_equal(out$u, c(0, 0.5, 1))
+  with_mock(check_xmax=function(x, xmax) return(5),
+    out <- probempirical(c(1, 2, 4, NaN, 5)))
   expect_equal(out$x, c(0, 1,  2, 4, 5))
   expect_equal(out$u, c(0, 0.25, 0.5, 0.75, 1))
 })
 
 test_that("probempirical handles both duplicate values. ", {
-  out <- probempirical(c(1, 2, 2, 4), xmax=5)
+  with_mock(check_xmax=function(x, xmax) return(xmax),
+    out <- probempirical(c(1, 2, 2, 4), xmax=5))
   expect_equal(out$x, c(0, 1, 2, 4, 5))
   expect_equal(out$u, c(0, 0.2, 0.6, 0.8, 1))
 })
@@ -76,6 +103,9 @@ test_that("get_output_seq is correct.", {
   expect_equal(get_output_seq(x=c(1, 2, 3, 5),  xmax=3, n.res=4, scaler=2), c(0.2, 0.4, 0.6, 0.8))
 })
 
+test_that("get_output_seq ignores missing data.", {
+  expect_equal(get_output_seq(x=c(0, 1, 3, 4, NA), xmax=NaN, n.res=4, scaler=2), c(0.2, 0.4, 0.6, 0.8)*8)
+})
 
 test_that("Scale_01 adjusts zeros for log transform.", {
   expect_equal(scale_01(x=c(0, 2, 4),  xmax=NaN, scale=0.5, zero_offset = 0.0001), c(0.0001, 2, 4))
@@ -108,5 +138,8 @@ test_that("Scale_full doesn't add 0 when it's already there.", {
 test_that("check_xmax is correct", {
   expect_equal(check_xmax(c(0, 1, 2, 3), xmax=4), 4)
   expect_equal(check_xmax(c(0, 1, 2, 3), xmax=2), 3)
-  expect_true(is.nan(check_xmax(c(0, 1, 2, 3), xmax=NaN)))
+})
+
+test_that("check_xmax ignores NA's", {
+  expect_equal(check_xmax(c(0, 1, 2, 3, NaN), xmax=2), 3)
 })

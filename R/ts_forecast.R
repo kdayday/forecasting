@@ -1,4 +1,10 @@
-#' Initialize a time series of power forecasts. Assumes training data already captures
+#' Register ts_forecast constructor to allow for overloading
+#' @param x A ts_forecast object
+ts_forecast <- function(x, ...) {
+  UseMethod("ts_forecast",x)
+}
+
+#' Construct a time series of power forecasts, using input training data. Assumes training data already captures
 #' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
 #'
 #' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
@@ -10,12 +16,66 @@
 #' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
 #' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
 #' @param ... optional arguments to the prob_forecast object
-ts_forecast <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
+ts_forecast.array <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
   # Check inputs
-  if (!is.array(x)) stop("Bad input. x must be an array.")
-  if (!((length(dim(x))==2 & tolower(scale) %in% c("site", "s")) | (length(dim(x))==3 & tolower(scale) %in% c("region", "total", "r", "t")))){
-    stop("Data and scale mis-match. x must be a 2-dimensional array for 1-dimensional forecasts or a 3-dimensional array for n-dimensional forecasts.")
+  if (!((length(dim(x))==3 & tolower(scale) %in% c("region", "total")))){
+    stop("Data and scale mis-match. x must be a 3-dimensional array for n-dimensional forecasts.")
   }
+  if (any(names(MoreTSArgs) %in% c("location", "time"))) stop("MoreTSArgs may not include location or time, which are reserved names.")
+
+  new_ts_forecast(x, start_time, time_step, scale, location, method, sun_up_threshold, MoreTSArgs, ...)
+}
+
+#' Construct a time series of power forecasts, using input training data. Assumes training data already captures
+#' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
+#'
+#' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
+#' @param start_time A lubridate time stamp
+#' @param time_step Time step in hours
+#' @param scale One of 'site', 'region', 'total'
+#' @param location A string
+#' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
+#' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
+#' @param MoreTSArgs An optional dictionary of time-series arguments to the forecast calculation
+#' @param ... optional arguments to the prob_forecast object
+ts_forecast.matrix <- function(x, start_time, time_step, scale, location, method, sun_up_threshold=0.5, MoreTSArgs=NA, ...) {
+  # Check inputs
+  if (tolower(scale) !="site"){
+    stop("Data and scale mis-match. x must be a 2-dimensional array for 1-dimensional forecasts.")
+  }
+
+  new_ts_forecast(x, start_time, time_step, scale, location, method, sun_up_threshold, MoreTSArgs, ...)
+}
+
+
+#' An alternative ts_forecast constructor, which accepts an already calculated list of forecasts.
+#' For future work, this could be integrated with copula post-processing with site-level forecasts.
+#'
+#' @param x A list of prob_forecast objects
+#' @param start_time A lubridate time stamp
+#' @param time_step Time step in hours
+#' @param scale One of 'site', 'region', 'total'
+#' @param location A string
+#' @param method A string
+ts_forecast.list <- function(x, start_time, time_step, scale, location, method) {
+  # Check inputs
+  if (!any(sapply(x, is.prob_forecast))) stop("Bad input. x must be a list of forecasts.")
+
+  sun_up <- sapply(x, is.prob_forecast)
+
+  dat <- list(start_time = start_time,
+              scale = scale,
+              location = location,
+              time_step = time_step,
+              forecasts = x,
+              sun_up = sun_up
+  )
+  structure(dat, class = "ts_forecast")
+}
+
+# Helper constructor to calculate forecast from matrix or array data inputs
+new_ts_forecast <- function(x, start_time, time_step, scale, location, method,
+                                            sun_up_threshold, MoreTSArgs, ...) {
   if (any(names(MoreTSArgs) %in% c("location", "time"))) stop("MoreTSArgs may not include location or time, which are reserved names.")
 
   sun_up <- apply(x, MARGIN=1, FUN=check_sunup, sun_up_threshold=sun_up_threshold)
@@ -86,24 +146,16 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 #' @param method One of 'rank' if scale is 'site', else one of gaussian', 'empirical', 'vine'
 #' @return A function to initialize a forecast of the desired type
 get_forecast_class <- function(scale, method){
-  if (tolower(scale) %in% c("site", "s")){
+  if (tolower(scale) %in% c("site")){
     cls <- switch(tolower(method),
                   "rank" = prob_1d_rank_forecast,
-                  "r" = prob_1d_rank_forecast,
                   "kde" = prob_1d_kde_forecast,
-                  "k" = prob_1d_kde_forecast,
                   "bma" = prob_1d_bma_forecast,
-                  "b" = prob_1d_bma_forecast,
                   stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' ')))
     d <- '1'
-  } else if (tolower(scale) %in% c("region", "total", "r", "t")){
+  } else if (tolower(scale) %in% c("region", "total")){
     cls <- switch(tolower(method),
-           "vine" = prob_nd_vine_forecast,
-           "gaussian" = prob_nd_gaussian_forecast,
-           "empirical" = prob_nd_empirical_forecast,
-           "v" = prob_nd_vine_forecast,
-           "g" = prob_nd_gaussian_forecast,
-           "e" = prob_nd_empirical_forecast,
+           "vine" = stop("Not implemented. ts_forecast doesn't have direct handling for vine copula's new list of inputs. "),
            stop(paste('Forecast type', method, 'not recognized for multi-dimensional forecasts.', sep=' ')))
     d <- 'n'
   } else stop(paste('Forecast scale', scale, 'not recognized.', sep=' '))
@@ -119,20 +171,28 @@ length.ts_forecast <- function(x) {
 #'
 #' @param x A ts_forecast object
 #' @param tel vector of telemetry (optional)
-plot.ts_forecast <- function(x, ..., tel=NA) {
+#' @param window (optional) A vector of (start index, end index) to plot certain time window
+plot.ts_forecast <- function(x, tel=NA, window=NA) {
+  if (all(!(is.na(window))) & length(window)!=2) stop("To use time window, must give a vector of starting and ending indices")
+
+  start <- ifelse(all(is.na(window)), 1, window[1])
+  end <- ifelse(all(is.na(window)), length(x), window[2])
+  indices <- start:end
+
   probs <- x$forecasts[[min(which(sapply(x$forecasts, FUN=is.prob_forecast)))]]$quantiles$q
-  plotdata <- matrix(ncol=length(x), nrow=length(probs))
-  for (i in seq_along(x$forecasts)) {
-    if (is.prob_forecast(x$forecasts[[i]])) {
-      plotdata[,i] <- x$forecasts[[i]]$quantiles$x
+  plotdata <- matrix(ncol=length(indices), nrow=length(probs))
+  for (i in seq_along(indices)) {
+    if (is.prob_forecast(x$forecasts[[indices[i]]])) {
+      plotdata[,i] <- x$forecasts[[indices[i]]]$quantiles$x
     } else plotdata[,i] <- 0
   }
-  graphics::plot(NULL, xlim=c(0, length(x)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Power [MW]")
+  graphics::plot(NULL, xlim=c(0, length(indices)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Power [MW]")
   fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
                rlab=NULL, start=x$time_step, frequency=1/x$time_step)
   if (any(!is.na(tel))) {
     actuals_time_step <- x$time_step*length(x)/length(tel)
-    graphics::lines(seq(from=actuals_time_step, length.out=length(tel), by=actuals_time_step), tel, col='chocolate3', lwd=2)
+    graphics::lines(seq(from=actuals_time_step, length.out=length(indices)/actuals_time_step, by=actuals_time_step),
+                    tel[((start-1)*actuals_time_step+1):(end*actuals_time_step)], col='chocolate3', lwd=2)
   }
 }
 
@@ -168,17 +228,32 @@ plot_cvar_over_time <- function(x) {
 #' Preprocess for metrics evaluations, for when telemetry is at finer time resolution than the forecast.
 #' The forecast and telemetry can be at different time resolutions, so long as telemetry is a multiple of the forecast.
 #'
-#' @param tel A vector of the telemetry values
-#' @param fc A vector of data from the time series forecast
+#' @param tel A vector of the telemetry values OR a single value of the length of the telemetry values
+#' @param fc A vector of data from the time series forecast OR a single value of the length of the forecast values
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE to expand forecast to telemetry resolution
-#' @param align Can be "top of hour", "half hour backend" (NaN first, telemetry lags), or "half hour frontend" (NaN last, telemetry leads).
+#' @param align Can be "end-of-hour", "half-hour " NaN first, telemetry lags
 #' Defaults to "half hour backend". Currently half hour approaches expand forecast the same way.
 #' @return list of the telemetry and forecast data vectors, of equal length
 equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="end-of-hour") {
-  if (!(align %in% c("end-of-hour", "half-hour-backend", "half-hour-frontend"))) stop(paste("Unknown method for align. Given ", align, sep=''))
-  if (length(tel) != length(fc) & (length(tel) < length(fc) | length(tel) %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+  if (!(align %in% c("end-of-hour", "half-hour"))) stop(paste("Unknown method for align. Given ", align, sep=''))
+  if (length(tel) > 1 & length(fc)> 1){
+    if ((length(tel) != length(fc)) & (length(tel) < length(fc) | length(tel) %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+    fc_length <- length(fc)
+    tel_length <- length(tel)
+  } else if (length(tel) > 1 & length(fc) == 1) {
+    if ((length(tel) != fc) & (length(tel) < fc | length(tel) %% (2*fc) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+    fc_length <- fc
+    tel_length <- length(tel)
+  } else if (length(tel) == 1 & length(fc) > 1) {
+    if ((tel != length(fc)) & (tel < length(fc) | tel %% (2*length(fc)) > 0)) stop("Telemetry length must be equal to or a even multiple of forecast length.")
+    tel_length <- tel
+    fc_length <- length(fc)
+  } else { # Both tel and fc are singletons
+    tel_length <- 1
+    fc_length <- 1
+  }
 
-  tel_2_fc <- length(tel)/length(fc)
+  tel_2_fc <- tel_length/fc_length
 
   # Default translation from telemetry index to forecast index
   index_translation <- function(i) {i}
@@ -186,19 +261,15 @@ equalize_telemetry_forecast_length <- function(tel, fc, agg=TRUE, align="end-of-
   if (tel_2_fc > 1) {
     if (align=="end-of-hour") {
       if (agg) {
-        tel <- sapply(seq_along(fc), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
+        tel <- sapply(seq_len(fc_length), function(i) {return(sum(tel[(tel_2_fc*(i-1)+1):(tel_2_fc*i)])/tel_2_fc)})
       } else {
         fc <- rep(fc, each=tel_2_fc)
         # Modified translation function to align more frequent telemetry with forecast:
         index_translation <- purrr::partial(function(i, tel_2_fc) {floor((i-1)/tel_2_fc)+1}, tel_2_fc=tel_2_fc)
       }
-    } else { # align == "half hour" of some variety
+    } else { # align == "half-hour"
       if (agg) {
-        if (align=="half-hour-backend"){
-          tel <- c(NaN, sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
-        } else {# align == "half hour frontend"
-          tel <- c(sapply(seq_along(fc[-1]), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}), NaN)
-        }
+        tel <- c(NaN, sapply(seq_len(fc_length-1), function(i) {return(sum(tel[(tel_2_fc*(i-0.5)+1):(tel_2_fc*(i+0.5))])/tel_2_fc)}))
       } else {
         fc <- c(rep(fc[1], each=tel_2_fc/2), rep(fc[-1], each=tel_2_fc), rep(NA, each=tel_2_fc/2))
         # Modified translation function to align more frequent telemetry with forecast
@@ -250,12 +321,30 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
 #' @param normalize.by (optional) A normalization factor, either a scalar or vector
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 CRPS_avg <-function(ts, tel, normalize.by=1, ...){
+  crps_list <- get_metric_time_series(CRPS, ts, tel, normalize.by, ...)
+  return(list(mean=mean(crps_list, na.rm=T), min=min(crps_list, na.rm=T), max=max(crps_list, na.rm=T), sd=stats::sd(crps_list, na.rm=T)))
+}
+
+#' Get a time-series of the forecast performance in terms of one metric
+#' @param metric A function for prob_forecast objects
+#' @param ts A ts_forecast object
+#' @param tel Vector of telemetry
+#' @param normalize.by A vector or scalar
+#' @param metricArgs (optional) a list of additional arguments to the metrics function
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+#' @return A vector
+get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NULL,  ...) {
   x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
   forecast_available <- x$fc
   normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
-  crps_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) return(CRPS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i])/normalize.by[i]))
-  return(list(mean=mean(crps_list), min=min(crps_list), max=max(crps_list), sd=stats::sd(crps_list)))
+
+  metric_list <- sapply(seq_along(forecast_available), function(i) {
+    if (forecast_available[i] & !is.na(x$tel[i])) {
+      args <- c(list(x=ts$forecasts[[x$translate_forecast_index(i)]], tel=x$tel[i]), metricArgs)
+      return(do.call(metric, args)/normalize.by[i])
+    } else return(NA)})
 }
+
 
 #' Get Brier score at a certain probability of exceedance
 #' This is calculated with a constant probability threshold, rather than a constant value threshold
@@ -340,11 +429,8 @@ MAE <-function(ts, tel, normalize.by=1, ...) {
 #' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average IS value
 IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
-  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
-  forecast_available <- x$fc
-  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
-  is_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {IS(ts$forecasts[[x$translate_forecast_index(i)]], x$tel[i], alpha=alpha)/normalize.by[i]})
-  return(list(mean=mean(is_list), min=min(is_list), max=max(is_list), sd=stats::sd(is_list)))
+  is_list <- get_metric_time_series(IS, ts, tel, normalize.by, metricArgs = list(alpha=alpha), ...)
+  return(list(mean=mean(is_list, na.rm=T), min=min(is_list, na.rm=T), max=max(is_list, na.rm=T), sd=stats::sd(is_list, na.rm=T)))
 }
 
 #' Get average sharpness, for an interval from alpha/2 to 1-alpha/2. Negatively oriented (smaller is better)
@@ -357,23 +443,22 @@ IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
 #' @param ... additional optional arguments to equalize_telemetry_forecast_length
 #' @return the average sharpness value
 sharpness_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
-  x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
-  forecast_available <- x$fc
-  normalize.by <- equalize_normalization_factor_length(normalize.by, x$tel, ...)
-  sharpness_list <- sapply(which(forecast_available & !is.na(x$tel)), function(i) {sharpness(ts$forecasts[[i]], alpha=alpha)/normalize.by[i]})
-  return(list(mean=mean(sharpness_list), min=min(sharpness_list), max=max(sharpness_list), sd=stats::sd(sharpness_list)))
+  sharpness_list <- get_metric_time_series(sharpness, ts, tel, normalize.by, metricArgs = list(alpha=alpha), ...)
+  return(list(mean=mean(sharpness_list, na.rm=T), min=min(sharpness_list, na.rm=T), max=max(sharpness_list, na.rm=T), sd=stats::sd(sharpness_list, na.rm=T)))
 }
 
-#' Plot diagonal line diagram of quantiles + observations
+#' Plot diagonal line diagram of quantiles + observations (i.e., a P-P plot)
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 plot_reliability <- function(ts, tel, ...) {
   x <- get_quantile_reliability(ts, tel, ...)
 
-  graphics::plot(x$quantiles, x$quantiles, type="l", lty=2, xlab="Nominal",
-                 ylab="Observed")
-  graphics::lines(x$quantiles[1:(length(x$quantiles)-1)], cumsum(x$hit_rate)[1:(length(x$quantiles)-1)], type='b', lty=1, pch=1)
+  ggplot2::ggplot(data.frame(x=x$quantiles, y=x$quantiles), ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_line() +
+    ggplot2::geom_point(data=data.frame(x=x$quantiles[1:(length(x$quantiles)-1)], y=cumsum(x$hit_rate)[1:(length(x$quantiles)-1)]), shape=1) +
+    ggplot2::xlab("Nominal Cumulative Distribution") +
+    ggplot2::ylab("Observed Cumulative Distribution")
 }
 
 
