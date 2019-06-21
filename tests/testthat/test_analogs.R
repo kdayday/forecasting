@@ -30,6 +30,17 @@ test_that("Analog selection is correct.", {
   expect_equal(out$forecast, h_data[c(1,3),,])
 })
 
+test_that("Analog selection slices arrays correctly for training window length of 1.", {
+  fake_data <- matrix(c(2, 20), ncol=2)
+  h_data <- array(h_data[,1,], dim=c(3,1,2))
+
+  with_mock(delle_monache_distance=function(h, f, ...) return(abs(sum(sapply(seq_len(dim(f)[2]), FUN=function(i) return(f[,i]-h[,i]))))),
+            out <- get_historical_analogs(fake_data, h_data, h_real, 2, weights))
+  expect_equal(out$obs, c(5, 1))
+  expect_equal(out$distance, c(0.2, 1 + 9))
+  expect_equal(out$forecast, array(c(2.2, 1, 20, 11), dim=c(2,1,2)))
+})
+
 test_that("Analog selection handles NA's in metrics.", {
   h_data[1,1,1] <- NA
   with_mock(delle_monache_distance = function(h, f, ...) return(ifelse(all(!is.na(h)), abs(sum(fake_data - h)), NA)),
@@ -44,6 +55,15 @@ test_that("Analog selection only searches time points with available observation
   expect_equal(out$obs, c(2, NA, NaN, NaN))
   expect_equal(out$distance, c(2, NA, NaN, NaN))
   expect_equal(out$forecast, aperm(array(c(h_data[3,,], rep(NaN, times=18)), dim=c(3, 2, 4)), c(3, 1,2)))
+})
+
+test_that("Analog selection fills insufficient analogs with NaNs for training window length of 1.", {
+  h_data <- array(c(1, 2.2, 1, 11, 20, 10), dim=c(3, 1, 2))
+  fake_data <- matrix(c(2, 20), ncol=2)
+  h_real[1:2] <- NA
+  with_mock(delle_monache_distance = function(h, f, ...) return(abs(sum(sapply(seq_len(dim(f)[2]), FUN=function(i) return(f[,i]-h[,i]))))),
+            out <- get_historical_analogs(fake_data, h_data, h_real, 2, weights))
+  expect_equal(out$forecast, aperm(array(c(1, 10, rep(NaN, times=2)), dim=c(1, 2, 2)), c(3, 1,2)))
 })
 
 test_that("Get analogs throws errors if no valid analogs are found. ", {

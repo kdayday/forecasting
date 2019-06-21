@@ -25,7 +25,7 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, weights, sigmas=F
   # There should be the same number of standard deviations as weights
   if (!sigmas) sigmas <- apply(h_train, 3, FUN=function(i) sd(i[i>0], na.rm=T))
 
-  metrics <- vapply(seq_along(h_real), function(i, ...) return(ifelse(is.na(h_real[i]), NA, delle_monache_distance(h_train[i,,], ...))),
+  metrics <- vapply(seq_along(h_real), function(i, ...) return(ifelse(is.na(h_real[i]), NA, delle_monache_distance(matrix(h_train[i,,], ncol=dim(h_train)[3]), ...))),
                     FUN.VALUE=numeric(1), f=f_test, weights=weights, sigmas=sigmas)
 
   # NA's get removed
@@ -38,7 +38,7 @@ get_historical_analogs <- function(f_test, h_train, h_real, n, weights, sigmas=F
   if (length(indices) >= n) {
     analog_metrics <- metrics[indices[1:n]]
     analogs <- h_real[indices[1:n]]
-    forecasts <- h_train[indices[1:n],,]
+    forecasts <- array(h_train[indices[1:n],,], dim=c(n, matching_time, n_features))
   } else {
     n_missing <- n-length(indices)
     analog_metrics <- c(metrics[indices], rep(NaN, times=n_missing))
