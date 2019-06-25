@@ -72,8 +72,7 @@ test_that("beta1_ens_modesl throws errors", {
   expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=1)), "Must*") # telemetry vector wrong length
   # Does not check for correct order of dimensions
   expect_error(beta1_ens_models(tel=matrix((1:6)/9, ncol=3), ens=matrix((1:9)/9, ncol=3)), "Must*") # telemetry matrix wrong size
-  expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=0.9), "Percent*")
-  expect_error(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=1.1), "Percent*")
+  expect_warning(beta1_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=1.1), "Percent*")
 })
 
 test_that("beta1_ens_modesl coefficient data look-up is correct", {
