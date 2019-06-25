@@ -15,7 +15,7 @@
 beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, percent_clipping_threshold=0.995, tol=1e-3, ...) {
   if (any(tel < 0, na.rm=T) | any(tel - 1>tol, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
   if (any(ens < 0, na.rm=T) | any(ens - 1>tol , na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
-  if (percent_clipping_threshold < 0.95  | percent_clipping_threshold > 1) stop('Percent clipping threshold must be <=1. Much greater than 0.95 is recommended.')
+  if (percent_clipping_threshold > 1) warning('Percent clipping threshold is > 1. Discrete component will be irrelevant in discrete-continuous model.')
   if (!(length(tel) == dim(ens)[1] | length(tel) == prod(dim(ens)))) stop("Must have same number of telemetry and forecast time-points.")
 
   # If needed, replicate telemetry out from vector to matrix
