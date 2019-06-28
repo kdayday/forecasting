@@ -379,7 +379,7 @@ plot_brier <- function(ts, tel, nmem = NA) {
   b <- sapply(q, FUN = function(qi) Brier(ts, tel, (100-qi)/100))
 
   g <- ggplot2::ggplot(data=data.frame(x=q, y=b), mapping=ggplot2::aes(x=x, y=y)) +
-      ggplot2::xlab("Quantile") +
+      ggplot2::xlab("Percentile") +
       ggplot2::ylab("Brier score") +
       ggplot2::theme_light()
 
