@@ -322,7 +322,8 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 CRPS_avg <-function(ts, tel, normalize.by=1, ...){
   crps_list <- get_metric_time_series(CRPS, ts, tel, normalize.by, ...)
-  return(list(mean=mean(crps_list, na.rm=T), min=min(crps_list, na.rm=T), max=max(crps_list, na.rm=T), sd=stats::sd(crps_list, na.rm=T)))
+  return(list(mean=mean(crps_list, na.rm=T), min=min(crps_list, na.rm=T), max=max(crps_list, na.rm=T), sd=stats::sd(crps_list, na.rm=T),
+              median=median(crps_list, na.rm=T)))
 }
 
 #' Get a time-series of the forecast performance in terms of one metric
