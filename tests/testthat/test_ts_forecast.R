@@ -192,6 +192,12 @@ test_that("Plot ts_forecast throws error", {
   expect_error(plot(structure(list(NA), class="prob_forecast"), window=c(1,4,5)))
 })
 
+test_that("Plot and write index subfunction is correct", {
+  expect_equal(get_index_window(21:30, window=NA), 1:10)
+  expect_equal(get_index_window(21:30, window=c(2, 8)), 2:8)
+})
+
+
 test_that("Time series of values at certain quantile is extracted correctly.", {
   expect_equal(get_quantile_time_series(ts, 20), c(NA, 20, 10))
 })

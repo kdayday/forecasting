@@ -173,11 +173,7 @@ length.ts_forecast <- function(x) {
 #' @param tel vector of telemetry (optional)
 #' @param window (optional) A vector of (start index, end index) to plot certain time window
 plot.ts_forecast <- function(x, tel=NA, window=NA) {
-  if (all(!(is.na(window))) & length(window)!=2) stop("To use time window, must give a vector of starting and ending indices")
-
-  start <- ifelse(all(is.na(window)), 1, window[1])
-  end <- ifelse(all(is.na(window)), length(x), window[2])
-  indices <- start:end
+  indices <- get_index_window(x, window)
 
   probs <- x$forecasts[[min(which(sapply(x$forecasts, FUN=is.prob_forecast)))]]$quantiles$q
   plotdata <- matrix(ncol=length(indices), nrow=length(probs))
@@ -192,8 +188,33 @@ plot.ts_forecast <- function(x, tel=NA, window=NA) {
   if (any(!is.na(tel))) {
     actuals_time_step <- x$time_step*length(x)/length(tel)
     graphics::lines(seq(from=actuals_time_step, length.out=length(indices)/actuals_time_step, by=actuals_time_step),
-                    tel[((start-1)*actuals_time_step+1):(end*actuals_time_step)], col='chocolate3', lwd=2)
+                    tel[((indices[1]-1)*actuals_time_step+1):(indices[length(indices)]*actuals_time_step)], col='chocolate3', lwd=2)
   }
+}
+
+#' Export a csv file of [time x quantiles]
+#' Note: this follows the convention of e.g., write.csv and write.table, but write isn't an exported generic function
+#'
+#' @param x A ts_forecast object
+#' @param file A file name
+#' @param window (optional) A vector of (start index, end index) to plot certain time window
+#' @param percentiles (optional -- defaults 1st to 99th percentiles) Select the quantiles associated with which percentiles will be exported
+write.ts_forecast <- function(x, file, window=NA, percentiles=1:99) {
+  indices <- get_index_window(x, window)
+
+  data <- sapply(percentiles, get_quantile_time_series, x=x, simplify="array")
+
+  colnames(data) <- percentiles
+  write.csv(data[indices, ], file=file)
+}
+
+# Helper function to select only a subset of the forecast length
+get_index_window <- function(x, window) {
+  if (all(!(is.na(window))) & length(window)!=2) stop("To use time window, must give a vector of starting and ending indices")
+
+  start <- ifelse(all(is.na(window)), 1, window[1])
+  end <- ifelse(all(is.na(window)), length(x), window[2])
+  indices <- start:end
 }
 
 #' Get a time-series of the forecast value at a particular quantile
