@@ -38,12 +38,6 @@ sharpness <- function(x, tel, alpha) {
   sharpness <- u-l
 }
 
-
-# trapezoidal area: (a+b)/2*width
-trapz <- function(width, height) {
-  sum(width*(height[-1] + height[1:length(height)-1])/2)
-}
-
 #' Estimate CRPS
 #'
 #' @param x A prob_forecast object
@@ -54,8 +48,8 @@ CRPS <- function(x, tel) {
   # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation,
   # plus one of two optional rectangles representing additional CRPS area if the telemetry was an outlier outside the forecasted quantiles
   crps <- ifelse(tel < min(y), min(y)-tel, 0) + # lower outlier rectangular area of height 1 (implied)
-          trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + # Area below heaviside step
-          trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2) + # Area above heaviside step
+          pracma::trapz(y[y <= tel], x$quantiles$q[y <= tel]^2) + # Area below heaviside step
+          pracma::trapz(y[y >= tel], (x$quantiles$q[y >= tel]-1)^2) + # Area above heaviside step
           ifelse(tel > max(y), tel-max(y), 0)# upper outlier rectangular area of height 1 (implied)
 }
 
