@@ -7,10 +7,10 @@ ts_forecast <- function(x, ...) {
 #' Construct a time series of power forecasts, using input training data. Assumes training data already captures
 #' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
 #'
-#' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
+#' @param x An array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast
 #' @param start_time A lubridate time stamp
 #' @param time_step Time step in hours
-#' @param scale One of 'site', 'region', 'total'
+#' @param scale One of 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
 #' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
@@ -29,10 +29,10 @@ ts_forecast.array <- function(x, start_time, time_step, scale, location, method,
 #' Construct a time series of power forecasts, using input training data. Assumes training data already captures
 #' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
 #'
-#' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
+#' @param x A matrix of training data of dimensions [time x ntrain] for a 1-dimensional forecast
 #' @param start_time A lubridate time stamp
 #' @param time_step Time step in hours
-#' @param scale One of 'site', 'region', 'total'
+#' @param scale Must be "site"
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
 #' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
@@ -148,9 +148,9 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 get_forecast_class <- function(scale, method){
   if (tolower(scale) %in% c("site")){
     cls <- switch(tolower(method),
-                  "rank" = prob_1d_rank_forecast,
-                  "kde" = prob_1d_kde_forecast,
-                  "bma" = prob_1d_bma_forecast,
+                  "rank" = fc_binned,
+                  "kde" = fc_kde,
+                  "bma" = fc_bma,
                   "climate" = fc_climatology,
                   stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' ')))
     d <- '1'
