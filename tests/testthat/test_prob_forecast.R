@@ -268,6 +268,19 @@ test_that('1d rank forecast quantile calculation is correct', {
   expect_equal(OUT$q, c(0.25, 0.5, 0.75))
 })
 
+
+test_that('climatology forecast quantile calculation throws error', {
+  fake_forecast <- structure(list(), class = c("prob_forecast", "fc_climatology"))
+  expect_error(calc_quantiles(fake_forecast), "*input.")
+})
+
+test_that('climatology forecast quantile calculation is correct', {
+  fake_forecast <- structure(list(), class = c("prob_forecast", "fc_climatology"))
+  OUT <- calc_quantiles(fake_forecast, telemetry=1:10, quantiles=seq(0.25, 0.75, by=0.25))
+  expect_equal(OUT$x, c(3, 5, 8))
+  expect_equal(OUT$q, c(0.25, 0.5, 0.75))
+})
+
 test_that("1D KDE forecast initialization is correct.", {
   with_mock(probempirical=function(dat, anoption= 'b', ...) return(paste(anoption, 'model', sep=' ')),
             calc_quantiles=function(...) return(NA), qc_input=function(x) return(x),

@@ -424,6 +424,51 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 
 # ---------------------------------------------------------------------------------------------
 
+#' Initialize a climatology forecast
+#' @param data.input A numeric vector of telemetry data
+#' @param location A string
+#' @param time A lubridate time stamp
+#' @return A 1-dimensional probabilistic forecast object
+fc_climatology <- function(data.input, location, time, ...) {
+  members <- qc_input(data.input)
+
+  # Initialize probabilistic forecast
+  dat <- list(location = location,
+              time = time,
+              d = 1)
+
+  x <- structure(dat, class = c("prob_forecast", "fc_climatology"))
+  x$quantiles <- calc_quantiles(x, telemetry=data.input)
+
+  return(x)
+}
+
+#' Check class
+is.fc_climatology <- function(x) inherits(x, "fc_climatology")
+
+#' Calculate forecast quantiles
+#'
+#' @param x fc_climatology object
+#' @param telemetry A vector of telemetry to generate the empirical cdf from
+#' @param quantiles Sequence of quantiles in (0,1)
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.fc_climatology <- function(x, telemetry=FALSE, quantiles=seq(0.001, 0.999, by=0.001)) {
+  if (all(!telemetry)) stop("telemetry is a required input.")
+  error_check_calc_quantiles_input(quantiles)
+  xseq <- stats::quantile(telemetry, probs=quantiles, names=F, na.rm=T, type=1)
+
+  return(list(x=xseq, q=quantiles))
+}
+
+#' Not implemented
+#'
+#' @param x fc_climatology object
+plot_pdf.fc_climatology <- function(x) {
+  stop("Not implemented for climatology forecasts.")
+}
+
+# ---------------------------------------------------------------------------------------------
+
 #' Initialize a univariate probabilistic power forecast for a specific time point using Bayesian model averaging (BMA)
 #'
 #' @param data.input A vector of ensemble members
