@@ -392,9 +392,31 @@ Brier <- function(ts, tel, PoE, ...) {
   return(mean((PoE-indicator)^2, na.rm = TRUE))
 }
 
-# Plot Brier score along the quantiles from 1 to 99
+#' Get Brier score at power thresholds
+#'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param thresholds Thresholds in units of the forecast. Can be a scalar or a vector
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+#' @return the Brier score
+Brier_power <- function(ts, tel, thresholds, ...) {
+  if (length(ts) != length(tel)) stop("Forecast and telemetry must be at same time resolution")
+  pit <- array(sapply(ts$forecasts, FUN=function(forecast, thresholds) {
+    if (is.prob_forecast(forecast)) return(stats::approx(forecast$quantiles$x, forecast$quantiles$q, thresholds, yleft=0, yright=1)$y)
+    else return(rep(NA, times=length(thresholds)) )},
+    thresholds=thresholds, simplify="array"), dim=c(length(thresholds), length(tel)))
+
+  valid <- !is.na(ts$forecasts) & !is.na(tel)
+  indicator <- sapply(seq_along(thresholds), FUN=function(i) as.integer(tel[valid] <= thresholds[i]), simplify="array")
+
+  bs <- sapply(seq_along(thresholds), FUN=function(i) mean((pit[i, valid]-indicator[,i])^2, na.rm = TRUE))
+
+  return(bs)
+}
+
+# Plot Brier score along the quantiles from 1 to 99
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
 #' @param nmem Number of ensemble members, to illustrate the n+1 bins
 plot_brier <- function(ts, tel, nmem = NA) {
   q <- 1:99
@@ -413,6 +435,23 @@ plot_brier <- function(ts, tel, nmem = NA) {
   }
   g <- g + ggplot2::geom_point() +
         ggplot2::geom_line(data=data.frame(x=q, y=q/100*(100-q)/100))
+
+  plot(g)
+}
+
+# Plot Brier score in terms of power
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param xseq A vector of the power thresholds to use
+plot_brier_by_power <- function(ts, tel, xseq) {
+
+  b <- Brier_power(ts, tel, xseq)
+
+  g <- ggplot2::ggplot(data=data.frame(x=xseq, y=b), mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_line() +
+    ggplot2::xlab("Power [MW]") +
+    ggplot2::ylab("Brier score") +
+    ggplot2::ggtitle(paste("CRPS:", signif(pracma::trapz(xseq, b), digits = 6), "[MW]"))
 
   plot(g)
 }

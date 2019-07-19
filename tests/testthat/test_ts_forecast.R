@@ -236,6 +236,16 @@ test_that("Brier score calculation handles NaN's", {
             expect_equal(Brier(fake_ts, tel=NA, PoE=.8), 0.34))
   })
 
+test_that("Brier score for power threshold is correct", {
+  ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  expect_equal(Brier_power(ts, tel=c(0, 40, 5, NA), thresholds=10), 0.325) # mean( (0.1)^2 , (-0.8)^2) = (0.01 + 0.64)/2 = 0.325
+})
+
+test_that("Brier score for power handles a vector of thresholds", {
+  ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  expect_equal(Brier_power(ts, tel=c(0, 40, 5, NA), thresholds=c(10, 45, 20)), c(0.325, 0.15625, 0.2)) # mean( (-0.55)^2 , (-0.1)^2) = (0.3025 + 0.01)/2 = 0.15625
+})
+
 test_that("MAE calculation is correct.", {
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(60, 60, 5), translate_forecast_index=identity)),
