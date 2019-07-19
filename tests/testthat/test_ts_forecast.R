@@ -222,6 +222,16 @@ test_that("Avg CRPS score handles telemetry longer than forecast", {
             expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)), median=32.5)))
 })
 
+test_that("Reliability index is correct", {
+  with_mock(calc_PIT_histogram=function(ts, tel, nbins, ...) return(list(bin_hits=c(0, 3, 9))),
+            expect_equal(RI(ts=NA, tel=NA, nbins=3), 10/12))
+})
+
+test_that("Percentile reliability index is correct", {
+  with_mock(calc_PIT_histogram=function(ts, tel, ...) return(list(bin_hits=c(4, 5, 6, 7, 3, rep(5, times=95)))),
+            expect_equal(PRI(ts=NA, tel=NA), 0.008))
+})
+
 test_that("Brier score is as expected", {
   ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),

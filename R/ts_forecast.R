@@ -348,6 +348,31 @@ CRPS_avg <-function(ts, tel, normalize.by=1, ...){
               median=median(crps_list, na.rm=T)))
 }
 
+#' Get the reliability index (RI) as per Delle Monache 2006
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param nbins Number of bins (original ensemble members) to evaluate
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+RI <-function(ts, tel, nbins=100, ...){
+  counts <- calc_PIT_histogram(ts, tel, nbins, ...)$bin_hits
+  return(sum(abs(counts/sum(counts) - 1/nbins)))
+}
+
+#' Get the percentile reliability index (PRI) of quantiles 1 to 99.
+#' An extension of the Delle Monache 2006 to look at distance from probabilistic calibration (P-P plot).
+#' * Note that this looks at the performance at the quantiles, not for each bin -- that is, it is assessed over 99 rather than 100 values
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+PRI <-function(ts, tel, ...){
+  counts <- calc_PIT_histogram(ts, tel, 100, ...)$bin_hits
+  obs_rate <- cumsum(counts/sum(counts))
+
+  return(sum(abs(seq(0.01, 1, by=0.01) - obs_rate)))
+}
+
 #' Get a time-series of the forecast performance in terms of one metric
 #' @param metric A function for prob_forecast objects
 #' @param ts A ts_forecast object
@@ -560,21 +585,18 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param ... optional arguments to equalize_telemetry_forecast_length
-#' @param quants Provide a vector of bin breakpoints, or NA to use the given quantiles
 #' @return list of the quantiles and their hit rates
-get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
+get_quantile_reliability <- function(ts, tel, ...) {
   x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
   forecast_available <- x$fc
 
   # Get the list of quantiles that have been evaluated, and add top limit at 1
-  if (all(is.na(quants))) {
-    quants <- c(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles$q, 1)
-  }
+  quants <- c(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles$q, 1)
 
   # Find time-points where telemetry and forecast data is available
   indices <- which(forecast_available & !is.na(x$tel))
   q_idx_subfunc <- function(i) {
-    list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x > x$tel[i]) # List of quantile indices above telemetry value
+    list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x >= x$tel[i]) # List of quantile indices above telemetry value
     if (length(list_idx) > 0) {idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
     return(idx)
   }
