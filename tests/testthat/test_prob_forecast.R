@@ -274,9 +274,9 @@ test_that('empirical forecast quantile calculation throws error', {
   expect_error(calc_quantiles(fake_forecast), "*input.")
 })
 
-test_that('empirical forecast quantile calculation is correct', {
+test_that('empirical forecast quantile calculation is correct and ignores NaNs', {
   fake_forecast <- structure(list(), class = c("prob_forecast", "fc_empirical"))
-  OUT <- calc_quantiles(fake_forecast, telemetry=1:10, quantiles=seq(0.25, 0.75, by=0.25))
+  OUT <- calc_quantiles(fake_forecast, telemetry=c(NaN, 1:10), quantiles=seq(0.25, 0.75, by=0.25))
   expect_equal(OUT$x, c(3, 5, 8))
   expect_equal(OUT$q, c(0.25, 0.5, 0.75))
 })
