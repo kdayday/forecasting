@@ -151,7 +151,7 @@ get_forecast_class <- function(scale, method){
                   "rank" = fc_binned,
                   "kde" = fc_kde,
                   "bma" = fc_bma,
-                  "climate" = fc_climatology,
+                  "empirical" = fc_empirical,
                   stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' ')))
     d <- '1'
   } else if (tolower(scale) %in% c("region", "total")){
