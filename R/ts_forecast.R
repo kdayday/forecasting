@@ -348,6 +348,28 @@ CRPS_avg <-function(ts, tel, normalize.by=1, ...){
               median=median(crps_list, na.rm=T)))
 }
 
+#' Get the quantile-weighted CRPS (continuous ranked probability score) for the forecast
+#' Estimated by trapezoidal integration of its quantile decomposition
+#' Quantile weighting functions as suggested in Gneiting & Ranjan 2012
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param weighting One of "none" (default), "tails", "right", "left", "center"
+#' @param quantiles (optional) Sequence of quantiles to integrate over
+qwCRPS <-function(ts, tel, weighting="none", quantiles=seq(0.001, 0.999, by=0.001)){
+  qs <- QS(ts, tel, quantiles)
+  weights <- switch(tolower(weighting),
+         "none" = 1,
+         "tails" = (2*quantiles-1)^2,
+         "right" = quantiles^2,
+         "left" = (1-quantiles)^2,
+         "center" = quantiles*(1-quantiles),
+         stop("Weighting method not recognized"))
+
+  wqs <- weights * qs
+  return(pracma::trapz(quantiles, wqs))
+}
+
 #' Get the reliability index (RI) as per Delle Monache 2006
 #'
 #' @param ts A ts_forecast object
