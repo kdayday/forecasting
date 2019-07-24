@@ -456,6 +456,17 @@ Brier <- function(ts, tel, thresholds) {
   return(bs)
 }
 
+plot_quantile_score <- function(ts, tel, quantiles=seq(0.01, 0.99, by=0.01)) {
+  qs <- QS(ts, tel, quantiles)
+
+  g <- ggplot2::ggplot(data=data.frame(x=quantiles, y=qs), mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_point() +
+    ggplot2::xlab("Quantile") +
+    ggplot2::ylab("Quantile score")
+
+  plot(g)
+}
+
 # Plot Brier score along the quantiles from 1 to 99
 #' @param ts A ts_forecast object
 #' @param tel A vector of the telemetry values
