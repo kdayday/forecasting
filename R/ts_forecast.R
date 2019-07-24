@@ -393,6 +393,24 @@ get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NUL
     } else return(NA)})
 }
 
+#' Get quantile score at certain quantile(s)
+#'
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+#' @param quantiles, numeric [0,1].  Can be a scalar or a vector
+#' @return the Quantile score
+QS <- function(ts, tel, quantiles) {
+  if (length(ts) != length(tel)) stop("Forecast and telemetry must be at same time resolution")
+  if (any(quantiles < 0) | any(quantiles > 1)) stop(paste("Probability of exceedance must be [0,1], given ", PoE, '.', sep=''))
+
+  thresholds <- t(sapply(100*quantiles, FUN=function(q) {get_quantile_time_series(ts, q)}, simplify="array"))
+
+  valid <- !is.na(ts$forecasts) & !is.na(tel)
+  indicator <- sapply(seq_along(quantiles), FUN=function(i) {as.integer(tel[valid] <= thresholds[i, valid])}, simplify="array")
+
+  qs <- sapply(seq_along(quantiles), FUN=function(q) mean(2*(indicator[,q]-quantiles[q])*(thresholds[q,valid]-tel[valid]), na.rm = TRUE))
+  return(qs)
+}
 
 #' Get Brier score at a certain probability of exceedance
 #' This is calculated with a constant probability threshold, rather than a constant value threshold
@@ -402,7 +420,7 @@ get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NUL
 #' @param PoE Threshold probability of exceedance, numeric [0,1]
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the Brier score
-Brier <- function(ts, tel, PoE, ...) {
+Brier_quantile <- function(ts, tel, PoE, ...) {
   if (PoE < 0 | PoE > 1) stop(paste("Probability of exceedance must be [0,1], given ", PoE, '.', sep=''))
   thresholds <- get_quantile_time_series(ts, 100*(1-PoE))
 
@@ -422,9 +440,8 @@ Brier <- function(ts, tel, PoE, ...) {
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param thresholds Thresholds in units of the forecast. Can be a scalar or a vector
-#' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the Brier score
-Brier_power <- function(ts, tel, thresholds, ...) {
+Brier <- function(ts, tel, thresholds) {
   if (length(ts) != length(tel)) stop("Forecast and telemetry must be at same time resolution")
   pit <- array(sapply(ts$forecasts, FUN=function(forecast, thresholds) {
     if (is.prob_forecast(forecast)) return(stats::approx(forecast$quantiles$x, forecast$quantiles$q, thresholds, yleft=0, yright=1)$y)
@@ -443,9 +460,9 @@ Brier_power <- function(ts, tel, thresholds, ...) {
 #' @param ts A ts_forecast object
 #' @param tel A vector of the telemetry values
 #' @param nmem Number of ensemble members, to illustrate the n+1 bins
-plot_brier <- function(ts, tel, nmem = NA) {
+plot_brier_by_quantile <- function(ts, tel, nmem = NA) {
   q <- 1:99
-  b <- sapply(q, FUN = function(qi) Brier(ts, tel, (100-qi)/100))
+  b <- sapply(q, FUN = function(qi) Brier_quantile(ts, tel, (100-qi)/100))
 
   g <- ggplot2::ggplot(data=data.frame(x=q, y=b), mapping=ggplot2::aes(x=x, y=y)) +
       ggplot2::xlab("Percentile") +
@@ -470,7 +487,7 @@ plot_brier <- function(ts, tel, nmem = NA) {
 #' @param xseq A vector of the power thresholds to use
 plot_brier_by_power <- function(ts, tel, xseq) {
 
-  b <- Brier_power(ts, tel, xseq)
+  b <- Brier(ts, tel, xseq)
 
   g <- ggplot2::ggplot(data=data.frame(x=xseq, y=b), mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line() +

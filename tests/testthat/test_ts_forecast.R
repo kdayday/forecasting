@@ -232,28 +232,36 @@ test_that("Percentile reliability index is correct", {
             expect_equal(PRI(ts=NA, tel=NA), 0.008))
 })
 
-test_that("Brier score is as expected", {
+
+test_that("Quantile score is as expected", {
+  ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  with_mock(get_quantile_time_series=function(ts,y) return(sapply(ts$forecasts, FUN=function(forecast) {
+    if (!all(is.na(forecast))) return(forecast$quantiles$x[y/10]) else return(NA)})),
+            expect_equal(QS(ts, c(0, 40, 5, NA), quantiles=c(0.2, 0.5, 0.7)), c(8, 15 , 18))) # 2*mean(0.2*20, 0.8*5)=8, (0.5*10, 0.5*20), (0.3*30, 0.3*30)
+})
+
+test_that("Brier score of a quantile is as expected", {
   ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(0, 40, 5, 15), fc=ts, translate_forecast_index=identity)),
-    expect_equal(Brier(ts, tel=NA, PoE=.8), 0.24)) # mean( (-0.2)^2, (0.8)^2, (-0.2)^2) = (0.64 +0.04 + 0.04)/3 = 0.24
+    expect_equal(Brier_quantile(ts, tel=NA, PoE=.8), 0.24)) # mean( (-0.2)^2, (0.8)^2, (-0.2)^2) = (0.64 +0.04 + 0.04)/3 = 0.24
 })
 
-test_that("Brier score calculation handles NaN's", {
+test_that("Brier score calculation of a quantile handles NaN's", {
   fake_ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(0, 40, 5, NA), translate_forecast_index=identity)),
-            expect_equal(Brier(fake_ts, tel=NA, PoE=.8), 0.34))
+            expect_equal(Brier_quantile(fake_ts, tel=NA, PoE=.8), 0.34))
   })
 
 test_that("Brier score for power threshold is correct", {
   ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
-  expect_equal(Brier_power(ts, tel=c(0, 40, 5, NA), thresholds=10), 0.325) # mean( (0.1)^2 , (-0.8)^2) = (0.01 + 0.64)/2 = 0.325
+  expect_equal(Brier(ts, tel=c(0, 40, 5, NA), thresholds=10), 0.325) # mean( (0.1)^2 , (-0.8)^2) = (0.01 + 0.64)/2 = 0.325
 })
 
 test_that("Brier score for power handles a vector of thresholds", {
   ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
-  expect_equal(Brier_power(ts, tel=c(0, 40, 5, NA), thresholds=c(10, 45, 20)), c(0.325, 0.15625, 0.2)) # mean( (-0.55)^2 , (-0.1)^2) = (0.3025 + 0.01)/2 = 0.15625
+  expect_equal(Brier(ts, tel=c(0, 40, 5, NA), thresholds=c(10, 45, 20)), c(0.325, 0.15625, 0.2)) # mean( (-0.55)^2 , (-0.1)^2) = (0.3025 + 0.01)/2 = 0.15625
 })
 
 test_that("MAE calculation is correct.", {
