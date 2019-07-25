@@ -608,8 +608,8 @@ plot_reliability <- function(ts, tel, ...) {
   ggplot2::ggplot(data.frame(x=x$quantiles, y=x$quantiles), ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line() +
     ggplot2::geom_point(data=data.frame(x=x$quantiles[1:(length(x$quantiles)-1)], y=cumsum(x$hit_rate)[1:(length(x$quantiles)-1)]), shape=1) +
-    ggplot2::xlab("Nominal Cumulative Distribution") +
-    ggplot2::ylab("Observed Cumulative Distribution")
+    ggplot2::xlab("Forecast Probability") +
+    ggplot2::ylab("Observed Relative Frequency")
 }
 
 
