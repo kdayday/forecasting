@@ -223,34 +223,28 @@ test_that("Avg CRPS score handles telemetry longer than forecast", {
             expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)), median=32.5)))
 })
 
+test_that("Weighted CRPS function throws error", {
+  expect_error(weight_QS(qs=c(1,1), quantiles=c(0.2, 0.5, 0.7), weighting="none"), "*same length")
+})
+
 test_that("Weighted CRPS with no weight is correct", {
-  with_mock(trapz=function(q, wqs) return(sum(wqs)),
-            QS=function(...) return(c(1, 1, 1)),
-            expect_equal(qwCRPS(NA, NA, weighting="none", quantiles=c(0.2, 0.5, 0.7)), 3))
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="none"), c(1,1,1))
 })
 
-test_that("Left-tail weighted CRPS is correct", {
-  with_mock(trapz=function(q, wqs) return(sum(wqs)),
-            QS=function(...) return(c(1, 1, 1)),
-            expect_equal(qwCRPS(NA, NA, weighting="left", quantiles=c(0.2, 0.5, 0.7)), 0.98)) # 0.64, 0.25, 0.09
+test_that("Left-tail weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="left"), c(0.64, 0.25, 0.09))
 })
 
-test_that("Right-tail weighted CRPS is correct", {
-  with_mock(trapz=function(q, wqs) return(sum(wqs)),
-            QS=function(...) return(c(1, 1, 1)),
-            expect_equal(qwCRPS(NA, NA, weighting="right", quantiles=c(0.2, 0.5, 0.7)), 0.78)) # 0.04, 0.25, 0.49
+test_that("Right-tail weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="right"), c(0.04, 0.25, 0.49))
 })
 
-test_that("Center weighted CRPS is correct", {
-  with_mock(trapz=function(q, wqs) return(sum(wqs)),
-            QS=function(...) return(c(1, 1, 1)),
-            expect_equal(qwCRPS(NA, NA, weighting="center", quantiles=c(0.2, 0.5, 0.7)), 0.62)) # 0.16, 0.25, 0.21
+test_that("Center weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="center"), c(0.16, 0.25, 0.21))
 })
 
-test_that("Tails weighted CRPS is correct", {
-  with_mock(trapz=function(q, wqs) return(sum(wqs)),
-            QS=function(...) return(c(1, 1, 1)),
-            expect_equal(qwCRPS(NA, NA, weighting="tails", quantiles=c(0.2, 0.5, 0.7)), 0.52)) # 0.36, 0, 0.16
+test_that("Tails weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="tails"), c(0.36, 0, 0.16))
 })
 
 test_that("Reliability index is correct", {

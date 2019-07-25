@@ -358,15 +358,7 @@ CRPS_avg <-function(ts, tel, normalize.by=1, ...){
 #' @param quantiles (optional) Sequence of quantiles to integrate over
 qwCRPS <-function(ts, tel, weighting="none", quantiles=seq(0.001, 0.999, by=0.001)){
   qs <- QS(ts, tel, quantiles)
-  weights <- switch(tolower(weighting),
-         "none" = 1,
-         "tails" = (2*quantiles-1)^2,
-         "right" = quantiles^2,
-         "left" = (1-quantiles)^2,
-         "center" = quantiles*(1-quantiles),
-         stop("Weighting method not recognized"))
-
-  wqs <- weights * qs
+  wqs <- weight_QS(qs, quantiles, weighting)
   return(pracma::trapz(quantiles, wqs))
 }
 
@@ -415,7 +407,7 @@ get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NUL
     } else return(NA)})
 }
 
-#' Get quantile score at certain quantile(s)
+#' Get weighted quantile score at certain quantile(s)
 #'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
@@ -423,7 +415,7 @@ get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NUL
 #' @return the Quantile score
 QS <- function(ts, tel, quantiles) {
   if (length(ts) != length(tel)) stop("Forecast and telemetry must be at same time resolution")
-  if (any(quantiles < 0) | any(quantiles > 1)) stop(paste("Probability of exceedance must be [0,1], given ", PoE, '.', sep=''))
+  if (any(quantiles < 0) | any(quantiles > 1)) stop("Quantiles must all be [0,1]")
 
   thresholds <- t(sapply(100*quantiles, FUN=function(q) {get_quantile_time_series(ts, q)}, simplify="array"))
 
@@ -432,6 +424,25 @@ QS <- function(ts, tel, quantiles) {
 
   qs <- sapply(seq_along(quantiles), FUN=function(q) mean(2*(indicator[,q]-quantiles[q])*(thresholds[q,valid]-tel[valid]), na.rm = TRUE))
   return(qs)
+}
+
+#' Calculate a vector of weighted quantile scores, emphasizing one or both tails or center
+#'
+#' @param qs A vector of quantile scores
+#' @param quantiles A vector of the quantiles (percentiles) in [0,1]
+#' @param weighting One of "none" (default), "tails", "right", "left", "center"
+#' @return A vector of the weighted scores
+weight_QS <- function(qs, quantiles, weighting="none") {
+  if (length(qs) != length(quantiles)) stop("Quantiles and quantile score must be the same length")
+
+  weights <- switch(tolower(weighting),
+                    "none" = 1,
+                    "tails" = (2*quantiles-1)^2,
+                    "right" = quantiles^2,
+                    "left" = (1-quantiles)^2,
+                    "center" = quantiles*(1-quantiles),
+                    stop("Weighting method not recognized"))
+  return(weights*qs)
 }
 
 #' Get Brier score at a certain probability of exceedance
@@ -478,13 +489,16 @@ Brier <- function(ts, tel, thresholds) {
   return(bs)
 }
 
-plot_quantile_score <- function(ts, tel, quantiles=seq(0.01, 0.99, by=0.01)) {
+plot_quantile_score <- function(ts, tel, quantiles=seq(0.01, 0.99, by=0.01), weighting="none") {
   qs <- QS(ts, tel, quantiles)
+  wqs <- weight_QS(qs, quantiles, weighting)
 
-  g <- ggplot2::ggplot(data=data.frame(x=quantiles, y=qs), mapping=ggplot2::aes(x=x, y=y)) +
+  if (weighting=="none") label<- "" else label <- paste(weighting,"-weighted", sep="")
+
+  g <- ggplot2::ggplot(data=data.frame(x=quantiles, y=wqs), mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_point() +
     ggplot2::xlab("Quantile") +
-    ggplot2::ylab("Quantile score")
+    ggplot2::ylab(paste(label, "Quantile Score"))
 
   plot(g)
 }
