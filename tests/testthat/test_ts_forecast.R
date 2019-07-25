@@ -18,7 +18,7 @@ identity <- function(i) {i}
 test_that("ts_forecast object initialization and sun-up calculation", {
   # Includes testing of the new_ts_forecast subfunction
   with_mock(calc_forecasts = mock_calc,
-  OUT <- ts_forecast(array(c(0, NA, 3), dim=c(3, 1)), start_time, time_step, 'site', 'Odessa', 'rank'))
+  OUT <- ts_forecast(array(c(0, NA, 3), dim=c(3, 1)), start_time, time_step, 'site', 'Odessa', 'binned'))
   expect_identical(OUT$forecasts, 'Calculated')
   expect_identical(class(OUT), 'ts_forecast')
   expect_equal(OUT$sun_up, c(FALSE, FALSE, TRUE))
@@ -26,7 +26,7 @@ test_that("ts_forecast object initialization and sun-up calculation", {
 
 test_that("ts_forecast object initialization and sun-up calculation with a pre-calculated list of forecasts", {
   forecasts <- list(NA, structure(list(a=1), class="prob_forecast"), NA)
-  OUT <- ts_forecast(forecasts, start_time, time_step, 'site', 'Odessa', 'rank')
+  OUT <- ts_forecast(forecasts, start_time, time_step, 'site', 'Odessa', 'binned')
   expect_equal(OUT$sun_up, c(FALSE, TRUE, FALSE))
 })
 
@@ -56,7 +56,7 @@ test_that("ts_forecast calculation inserts NA's when sun is down", {
 test_that("ts_forecast class lookup is correct", {
   expect_identical(get_forecast_class('Site', 'kde')$class, fc_kde)
   expect_identical(get_forecast_class('Site', 'kde')$dim, '1')
-  expect_identical(get_forecast_class('Site', 'rank')$class, fc_binned)
+  expect_identical(get_forecast_class('Site', 'binned')$class, fc_binned)
   expect_identical(get_forecast_class('Site', 'bma')$class, fc_bma)
   expect_identical(get_forecast_class('Site', 'empirical')$class, fc_empirical)
   expect_error(get_forecast_class('region', 'vine'), "Not implemented*")
@@ -79,7 +79,7 @@ test_that("ts_forecast calculate passes options through.", {
   opt2 <- 22
   fake_class3 <- function(data.input, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}
   with_mock(get_forecast_class=function(x,y) return(list(class=fake_class3, dim='n')),
-            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='rank', opt1=opt1, opt2=opt2))
+            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='binned', opt1=opt1, opt2=opt2))
   expect_equal(out[[1]]$thing1, opt1)
   expect_equal(out[[1]]$thing2, opt2)
 })
@@ -87,7 +87,7 @@ test_that("ts_forecast calculate passes options through.", {
 test_that("ts_forecast calculate handles additional time-series arguments correctly ", {
   fake_class3 <- function(data.input, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}
   with_mock(get_forecast_class=function(x,y) return(list(class=fake_class3, dim='n')),
-            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='rank',
+            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='binned',
                                   MoreTSArgs = list(opt1=3:5, opt2=7:9)))
   expect_equal(out[[1]]$thing1, 3)
   expect_equal(out[[2]]$thing2, 8)

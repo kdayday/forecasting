@@ -143,12 +143,12 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 #' Look-up function of the forecast class type
 #'
 #' @param scale One of 'site', 'region', 'total'
-#' @param method One of 'rank' if scale is 'site', else one of gaussian', 'empirical', 'vine'
+#' @param method One of 'binned' if scale is 'site', else one of gaussian', 'empirical', 'vine'
 #' @return A function to initialize a forecast of the desired type
 get_forecast_class <- function(scale, method){
   if (tolower(scale) %in% c("site")){
     cls <- switch(tolower(method),
-                  "rank" = fc_binned,
+                  "binned" = fc_binned,
                   "kde" = fc_kde,
                   "bma" = fc_bma,
                   "empirical" = fc_empirical,
@@ -611,7 +611,6 @@ plot_reliability <- function(ts, tel, ...) {
     ggplot2::xlab("Forecast Probability") +
     ggplot2::ylab("Observed Relative Frequency")
 }
-
 
 #' Plot probability integral transform histogram
 #' @param ts A ts_forecast object
