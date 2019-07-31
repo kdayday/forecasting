@@ -356,8 +356,12 @@ CRPS_avg <-function(ts, tel, normalize.by=1, ...){
 #' @param tel A vector of the telemetry values
 #' @param weighting One of "none" (default), "tails", "right", "left", "center"
 #' @param quantiles (optional) Sequence of quantiles to integrate over
-qwCRPS <-function(ts, tel, weighting="none", quantiles=seq(0.001, 0.999, by=0.001)){
-  qs <- QS(ts, tel, quantiles)
+#' @param qs (optional) A list of quantile scores corresponding to the quantiles
+qwCRPS <-function(ts, tel, weighting="none", quantiles=seq(0.01, 0.99, by=0.01), qs=NA){
+  if (all(is.na(qs))) {
+    if (length(quantiles) != length(qs)) stop("quantile and quantile score vectors must be same length.")
+    qs <- QS(ts, tel, quantiles)
+  }
   wqs <- weight_QS(qs, quantiles, weighting)
   return(pracma::trapz(quantiles, wqs))
 }
