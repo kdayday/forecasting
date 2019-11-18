@@ -223,11 +223,11 @@ test_that("Avg CRPS score handles telemetry longer than forecast", {
             expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)), median=32.5)))
 })
 
-test_that("Weighted CRPS function throws error", {
+test_that("Weighted QS function throws error", {
   expect_error(weight_QS(qs=c(1,1), quantiles=c(0.2, 0.5, 0.7), weighting="none"), "*same length")
 })
 
-test_that("Weighted CRPS with no weight is correct", {
+test_that("Weighted QS with no weight is correct", {
   expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="none"), c(1,1,1))
 })
 
