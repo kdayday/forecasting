@@ -17,10 +17,10 @@ test_that("probprecalc throws error", {
 })
 
 test_that("probprecalc handles inputs with and without density precalculated", {
-  fake_input <- structure(list("quantiles"=list(x=1:4, q=5:8)), class=c("prob_1d_bma_forecast"))
+  fake_input <- structure(list("quantiles"=list(x=1:4, q=5:8)), class=c("fc_bma"))
   with_mock(calc_quantiles=function(y, ...) return(list(x=y$quantiles$x, q=y$quantiles$q, d=3:6)),
             expect_equal(probprecalc(fake_input), list(x=1:4, d=3:6, u=5:8)))
-  fake_input <- structure(list("quantiles"=list(x=1:4, d=1:4, q=5:8)), class=c("prob_1d_bma_forecast"))
+  fake_input <- structure(list("quantiles"=list(x=1:4, d=1:4, q=5:8)), class=c("fc_bma"))
   with_mock(calc_quantiles=function(y, ...) return(list(x=y$quantiles$x, q=y$quantiles$q, d=3:6)),
             expect_equal(probprecalc(fake_input), list(x=1:4, d=1:4, u=5:8)))
 })

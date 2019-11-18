@@ -17,13 +17,13 @@ test_that("error_check_calc_quantiles_input throws errors", {
 })
 
 test_that("Vine copula forecast initialization throws errors", {
-  expect_error(prob_nd_vine_forecast(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three'), "data.input*")
-  expect_error(prob_nd_vine_forecast(list(copula=NA, marginals=NA), 'Odessa', 1,  n='three'), "*an integer.")
-  expect_error(prob_nd_vine_forecast(list(copula=NA, marginals=NA), 'Odessa', 1,  n=3000), "Input data must be a matrix*")
-  expect_error(prob_nd_vine_forecast(list(copula=list("a", 1), marginals=NA), 'Odessa', 1,  n=3000,
+  expect_error(fc_vine(matrix(c(0,0,0,0), ncol=2), 'Odessa', 1,  n='three'), "data.input*")
+  expect_error(fc_vine(list(copula=NA, marginals=NA), 'Odessa', 1,  n='three'), "*an integer.")
+  expect_error(fc_vine(list(copula=NA, marginals=NA), 'Odessa', 1,  n=3000), "Input data must be a matrix*")
+  expect_error(fc_vine(list(copula=list("a", 1), marginals=NA), 'Odessa', 1,  n=3000,
                                      training_transform_type="precalcbma", results_transform_type="precalcbma"),
                "Single-site forecasts*")
-  expect_error(prob_nd_vine_forecast(list(copula=NA, marginals=matrix(c(0,0,0,0), ncol=1)), 'Odessa', 1,  n=3000), "Training data from more than 1 site*")
+  expect_error(fc_vine(list(copula=NA, marginals=matrix(c(0,0,0,0), ncol=1)), 'Odessa', 1,  n=3000), "Training data from more than 1 site*")
 })
 
 test_that("Basic vine copula forecast initialization is correct.", {
@@ -31,8 +31,8 @@ test_that("Basic vine copula forecast initialization is correct.", {
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd,
             vinecop=function(x, ...) "newly trained", calc_transforms=function(...) list('training'='tr', 'results'='res'),
             to_uniform=function(...) "To uniform",
-  OUT <- prob_nd_vine_forecast(list(copula=data, marginals=data), 'Odessa', time=1,  n=3000))
-  expect_true(is.prob_nd_vine_forecast((OUT)))
+  OUT <- fc_vine(list(copula=data, marginals=data), 'Odessa', time=1,  n=3000))
+  expect_true(is.fc_vine((OUT)))
   expect_equal(length(OUT), 2)
   expect_equal(OUT$model, "newly trained") # test initialization with untrained input data
 })
@@ -44,7 +44,7 @@ test_that("Basic vine copula forecast initialization is correct with pretrained 
   with_mock(get_1d_samples = mock_samp, calc_quantiles=mock_pd,
             vinecop=function(x, ...) NA, calc_transforms=function(...) list('training'='tr', 'results'='res'),
             to_uniform=function(...) "To uniform",
-            OUT <- prob_nd_vine_forecast(list(copula=copula, marginals=marginals), 'Odessa', time=1,  n=3000, training_transform_type="precalcbma"))
+            OUT <- fc_vine(list(copula=copula, marginals=marginals), 'Odessa', time=1,  n=3000, training_transform_type="precalcbma"))
   expect_equal(OUT$model[[1]], "pretrained")
   expect_equal(length(OUT), 3)
 })
@@ -55,7 +55,7 @@ test_that("Marginal distribution optional arguments are passed through.", {
   with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, CVAR=mock_eval,
-            out <- prob_nd_vine_forecast(list(copula=data, marginals=data), 'TX', 'time',
+            out <- fc_vine(list(copula=data, marginals=data), 'TX', 'time',
                                   training_transform_type="geenens", results_transform_type='geenens', anoption=20))
   expect_equal(out$training_transforms[[1]]$anoption, 20)
   expect_equal(out$training_transforms[[1]]$method, 'geenens')
@@ -64,7 +64,7 @@ test_that("Marginal distribution optional arguments are passed through.", {
 test_that("Marginal distribution optional arguments are passed through and prob forecast optional arguments are extracted.", {
   data <- matrix(c(0,0,0,0), ncol=2)
   fake_forecast_class_call <- function(x, location='TX', time='a time', n=3000,  ...){
-    prob_nd_vine_forecast(x, location=location, time=time, n=n, ...)}
+    fc_vine(x, location=location, time=time, n=n, ...)}
   with_mock(marg_transform=function(x, cdf.method='default', anoption=NA) return(list(method=cdf.method, anoption=anoption)),
             to_uniform=function(...) return(NA), vinecop=function(...) return(NA), calc_quantiles=mock_pd,
             get_1d_samples= mock_samp, CVAR=mock_eval,
@@ -106,7 +106,7 @@ test_that("calc_transforms handles inputs correctly", {
 
 test_that("CVAR estimate is correct", {
   # Test sample over-ride
-  fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_x <- structure(list(), class = c("prob_forecast", "fc_vine"))
   OUT <- CVAR(fake_x, samples=0:100, epsilon=c(0.05, 0.95))
   expect_equal(OUT, list(cvar=list(low=2.5, high=97.5), var=list(low=5, high=95)))
   # Test default sampling
@@ -116,17 +116,17 @@ test_that("CVAR estimate is correct", {
 })
 
 test_that("CVAR calculations throws errors", {
-  fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_x <- structure(list(), class = c("prob_forecast", "fc_vine"))
   expect_error(CVAR(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, 2)), "Bad input*")
   expect_error(CVAR(fake_x, samples=matrix(c(0,0,0,0), ncol=2), epsilon=c(0.5, -0.1)), "Bad input*")
 
-  fake_x <- structure(list(), class = c("prob_forecast", "prob_1d_kde_forecast"))
+  fake_x <- structure(list(), class = c("prob_forecast", "fc_kde"))
   expect_error(CVAR(fake_x,epsilon=c(0.5, 2)), "Bad input*")
   expect_error(CVAR(fake_x, epsilon=c(0.5, -0.1)), "Bad input*")
 })
 
 test_that("Vine copula quantile calculation adjusts for inputs", {
-  fake_x <- structure(list(), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_x <- structure(list(), class = c("prob_forecast", "fc_vine"))
   with_mock(quantile=function(x,...) return(sum(x)) , get_1d_samples=function(...) return(1:4),
             OUT <- calc_quantiles(fake_x))
   expect_equal(OUT$x, 10)
@@ -137,7 +137,7 @@ test_that("Vine copula quantile calculation adjusts for inputs", {
 
 test_that("Interval score calculation is correct.", {
   dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   expect_equal(IS(fake_forecast, tel=15, alpha=0.2), 80)
   expect_equal(IS(fake_forecast, tel=9, alpha=0.2), 80+2/0.2)
   expect_equal(IS(fake_forecast, tel=95, alpha=0.2), 80+2/0.2*5)
@@ -145,20 +145,20 @@ test_that("Interval score calculation is correct.", {
 
 test_that("Interval score calculation throws error for bad input", {
   dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   expect_error(IS(fake_forecast, tel=95, alpha=10), "Alpha.*")
   expect_error(IS(fake_forecast, tel=95, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
 })
 
 test_that("Sharpness calculation is correct.", {
   dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   expect_equal(sharpness(fake_forecast, alpha=0.2), 80)
 })
 
 test_that("Sharpness calculation throws error for bad input", {
   dat <- list(quantiles=list(x=seq(0, 100, 10), q=seq(0, 1, 0.1)))
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   expect_error(sharpness(fake_forecast, alpha=10), "Alpha.*")
   expect_error(sharpness(fake_forecast, alpha=0.1), "Requested quantile is not in the forecast's list of quantiles.") #Unlisted quantile
 })
@@ -194,14 +194,14 @@ fake_uniform <- function(x,y){
 
 test_that('Vine copulas samples are added correctly', {
   dat <- list(n=2, model=NA, d=2, results_transforms=list(5,10))
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   with_mock(rvinecop=fake_sampling, from_uniform=fake_uniform,
             expect_identical(get_1d_samples(fake_forecast), c(7.5, 2.5)))
 })
 
 test_that('get_1d_samples handles precalculated samples', {
   dat <- list(n=2, model=NA, d=2, results_transforms=list(5,10))
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   with_mock(rvinecop=fake_sampling, from_uniform=fake_uniform,
             expect_identical(get_1d_samples(fake_forecast, samples.u=matrix(c(0.4, 0.1, 0.5, 0.4, 0.2, 0.5), ncol=2)), c(6, 2.5, 7.5)))
 })
@@ -210,7 +210,7 @@ test_that('get_variable_domain_grid calc is correct with one dimension length', 
   dat <- list(d=3, results_transforms=list(list('xmin'=1, 'xmax'=3),
                                                           list('xmin'=10, 'xmax'=30),
                                                           list('xmin'=100, 'xmax'=300)) )
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   out<- get_variable_domain_grid(fake_forecast, k=3)
   expect_equal(get_variable_domain_grid(fake_forecast, k=3), expand.grid(c(1, 2, 3), c(10, 20, 30), c(100, 200, 300)))
 })
@@ -219,19 +219,19 @@ test_that('get_variable_domain_grid calc is correct with unique dimension length
   dat <- list(d=3, results_transforms=list(list('xmin'=1, 'xmax'=3),
                                            list('xmin'=10, 'xmax'=30),
                                            list('xmin'=100, 'xmax'=300)) )
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   expect_equal(get_variable_domain_grid(fake_forecast, k=c(2, 3, 5)), expand.grid(c(1, 3), c(10, 20, 30), c(100, 150, 200, 250, 300)))
 })
 
 test_that('get_variable_domain_grid throws errors on bad input', {
-  fake_forecast <- structure(list(d=3), class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(list(d=3), class = c("prob_forecast", "fc_vine"))
   expect_error(get_variable_domain_grid(fake_forecast, k=1), "Bad input*") # Too few samples
   expect_error(get_variable_domain_grid(fake_forecast, k=c(2, 2)), "Bad input*") # incorrect number of inputs
 })
 
 test_that('get_joint_density_grid calc is correct', {
   dat <- list(n=3, model=NA, d=2, results_transforms=list(1, 10, 100))
-  fake_forecast <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  fake_forecast <- structure(dat, class = c("prob_forecast", "fc_vine"))
   with_mock(dvinecop=function(x, c) return(rowSums(x)),
             to_uniform=function(c, x) return(x/10),
             to_probability=function(c,x) return(x/c), # Divide by 'results_transforms' value
@@ -254,38 +254,51 @@ test_that("Quality control function works correctly and throws errors", {
 
 test_that("1d rank forecast initialization correctly handles NA's and multiple value.", {
   with_mock(calc_quantiles=mock_pd, qc_input=function(x) return(x),
-            OUT <- prob_1d_rank_forecast(c(2, 2, 4, 3, 4), location='Odessa', time=1, max_power = 5))
-  expect_true(is.prob_1d_rank_forecast((OUT)))
+            OUT <- fc_binned(c(2, 2, 4, 3, 4), location='Odessa', time=1, max_power = 5))
+  expect_true(is.fc_binned((OUT)))
   expect_equal(length(OUT), 1)
   expect_equal(OUT$rank_quantiles$x, c(0, 2, 2, 3, 4, 4, 5))
   expect_equal(OUT$rank_quantiles$y, c(0, 1/6, 2/6, 3/6, 4/6, 5/6, 1))
 })
 
 test_that('1d rank forecast quantile calculation is correct', {
-  fake_forecast <- structure(list(rank_quantiles=list(x=c(1, 6, 11), y=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_rank_forecast"))
+  fake_forecast <- structure(list(rank_quantiles=list(x=c(1, 6, 11), y=c(0, 0.5, 1))), class = c("prob_forecast", "fc_binned"))
   OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, by=0.25))
   expect_equal(OUT$x, seq(1+2.5, 11-2.5, by=2.5))
+  expect_equal(OUT$q, c(0.25, 0.5, 0.75))
+})
+
+
+test_that('empirical forecast quantile calculation throws error', {
+  fake_forecast <- structure(list(), class = c("prob_forecast", "fc_empirical"))
+  expect_error(calc_quantiles(fake_forecast), "*input.")
+})
+
+test_that('empirical forecast quantile calculation is correct and ignores NaNs', {
+  fake_forecast <- structure(list(), class = c("prob_forecast", "fc_empirical"))
+  OUT <- calc_quantiles(fake_forecast, telemetry=c(NaN, 1:10), quantiles=seq(0.25, 0.75, by=0.25))
+  expect_equal(OUT$x, c(3, 5, 8))
   expect_equal(OUT$q, c(0.25, 0.5, 0.75))
 })
 
 test_that("1D KDE forecast initialization is correct.", {
   with_mock(probempirical=function(dat, anoption= 'b', ...) return(paste(anoption, 'model', sep=' ')),
             calc_quantiles=function(...) return(NA), qc_input=function(x) return(x),
-            OUT <- prob_1d_kde_forecast(c(2, 4, 3), location='Odessa', time=1, cdf.method='empirical', anoption='a'))
-  expect_true(is.prob_1d_kde_forecast((OUT)))
+            OUT <- fc_kde(c(2, 4, 3), location='Odessa', time=1, cdf.method='empirical', anoption='a'))
+  expect_true(is.fc_kde((OUT)))
   expect_equal(length(OUT), 1)
   expect_equal(OUT$model, 'a model')
 })
 
 test_that('1d kde forecast quantile calculation is correct', {
-  fake_forecast <- structure(list(model=list(x=c(0, 5, 10), u=c(0, 0.5, 1))), class = c("prob_forecast", "prob_1d_kde_forecast"))
+  fake_forecast <- structure(list(model=list(x=c(0, 5, 10), u=c(0, 0.5, 1))), class = c("prob_forecast", "fc_kde"))
   OUT <- calc_quantiles(fake_forecast, quantiles=seq(0.25, 0.75, length.out = 3))
   expect_equal(OUT$x, seq(2.5, 7.5, by=2.5))
   expect_equal(OUT$q, seq(0.25, 0.75, length.out = 3))
 })
 
 test_that("1d KDE CVAR estimate is correct", {
-  fake_x <- structure(list(model=list(x=seq(5, 105, by=10), u=seq(0, 1, by=0.1), d=rep(0.01, times=11))), class = c("prob_forecast", "prob_1d_kde_forecast"))
+  fake_x <- structure(list(model=list(x=seq(5, 105, by=10), u=seq(0, 1, by=0.1), d=rep(0.01, times=11))), class = c("prob_forecast", "fc_kde"))
   OUT <- CVAR(fake_x, epsilon=c(0.2, 0.8))
 
   # Low side: CVAR = (1/0.2)*trapz from (5,0.05) to (25, 0.25) = (1/0.2)*3 = 15
@@ -307,7 +320,7 @@ test_that("1D BMA forecast discrete-continuous model weighting & summation is co
   xseq <- seq(0.25, 0.75, by=0.25)
   mp <- 10
   fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA, percent_clipping_threshold=0.9),
-                           max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
+                           max_power=mp, members=mem), class = c("prob_forecast", "fc_bma"))
 
   with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
             dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
@@ -330,7 +343,7 @@ test_that("1D BMA forecast discrete-continuous model handles missing forecast me
   xseq <- seq(0.25, 0.75, by=0.25)
   mp <- 10
   fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA, percent_clipping_threshold=0.9),
-                           max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
+                           max_power=mp, members=mem), class = c("prob_forecast", "fc_bma"))
 
   with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
             dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
@@ -375,7 +388,7 @@ test_that("get_alpha_betas normalization and calculation is correct", {
   mem <- c(1, 5, 11) # Last should be truncated
   mp <- 10
   fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=NA, A_transform=NA, B_transform=NA),
-                           max_power=mp, members=mem), class = c("prob_forecast", "prob_1d_bma_forecast"))
+                           max_power=mp, members=mem), class = c("prob_forecast", "fc_bma"))
 
   with_mock(get_poc = function(x, A, ...) return(A),
             get_rho = function(x, ...) return(x),
@@ -390,7 +403,7 @@ test_that("get_alpha_betas truncates gammas to avoid U distributions and handles
   mp <- 1
   rho <- c(0.25, 0.75, NA)
   fake_x <- structure(list(model=list(A0=NA, A1=NA, A2=NA, B0=rho, B1=NA, C0=NA, w=NA, A_transform=NA, B_transform=NA),
-                           max_power=mp, members=rho), class = c("prob_forecast", "prob_1d_bma_forecast"))
+                           max_power=mp, members=rho), class = c("prob_forecast", "fc_bma"))
   with_mock(get_poc = function(...) return(NA),
             get_rho = function(x, B0, ...) return(B0),
             get_gamma = function(x, ...) return(ifelse(is.na(x), NA, 0.17)), # Variance in grey region based on variance of 0.16
@@ -401,7 +414,7 @@ test_that("get_alpha_betas truncates gammas to avoid U distributions and handles
 
 
 test_that('1d bma forecast quantile calculation is correct', {
-  fake_forecast <- structure(list(max_power=10), class = c("prob_forecast", "prob_1d_bma_forecast"))
+  fake_forecast <- structure(list(max_power=10), class = c("prob_forecast", "fc_bma"))
   q <- c(0.2, 0.4, 0.6, 0.8)
   with_mock(get_discrete_continuous_model=function(...) return(list(xseq=c(0, 3, 10), pbeta=c(0, 0.3, 1), dbeta=c(10, 13, 20), PoC=0.2)),
             OUT <- calc_quantiles(fake_forecast, quantiles=q))

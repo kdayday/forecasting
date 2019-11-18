@@ -38,12 +38,6 @@ sharpness <- function(x, tel, alpha) {
   sharpness <- u-l
 }
 
-
-# trapezoidal area: (a+b)/2*width
-trapz <- function(width, height) {
-  sum(width*(height[-1] + height[1:length(height)-1])/2)
-}
-
 #' Estimate CRPS
 #'
 #' @param x A prob_forecast object
@@ -54,8 +48,8 @@ CRPS <- function(x, tel) {
   # CRPS broken down into two parts below and above tel to simplify Heaviside evaluation,
   # plus one of two optional rectangles representing additional CRPS area if the telemetry was an outlier outside the forecasted quantiles
   crps <- ifelse(tel < min(y), min(y)-tel, 0) + # lower outlier rectangular area of height 1 (implied)
-          trapz(diff(y[y <= tel]), x$quantiles$q[y <= tel]^2) + # Area below heaviside step
-          trapz(diff(y[y >= tel]), (x$quantiles$q[y >= tel]-1)^2) + # Area above heaviside step
+          pracma::trapz(y[y <= tel], x$quantiles$q[y <= tel]^2) + # Area below heaviside step
+          pracma::trapz(y[y >= tel], (x$quantiles$q[y >= tel]-1)^2) + # Area above heaviside step
           ifelse(tel > max(y), tel-max(y), 0)# upper outlier rectangular area of height 1 (implied)
 }
 
@@ -161,7 +155,7 @@ error_check_calc_quantiles_input <- function(quantiles){
 #' @param samples.u (optional) A precalculated set of n-dimensional CDF samples from rvinecop
 #' @param ... optional arguments to the marginal estimator
 #' @return An n-dimensional probabilistic forecast object from vine copulas
-prob_nd_vine_forecast <- function(data.input, location, time,
+fc_vine <- function(data.input, location, time,
                                   training_transform_type="empirical", results_transform_type='empirical', n=1e4,
                                   samples.u=NA, ...) {
   if (length(names(data.input))==0 | !all(names(data.input) == c("copula", "marginals"))) stop("data.input must be a list with 'copula' and 'marginals' inputs")
@@ -196,7 +190,7 @@ prob_nd_vine_forecast <- function(data.input, location, time,
               d = d,
               n=n
               )
-  x <- structure(dat, class = c("prob_forecast", "prob_nd_vine_forecast"))
+  x <- structure(dat, class = c("prob_forecast", "fc_vine"))
 
   # Complete probabilistic forecast by sampling and aggregating
   x$quantiles <- calc_quantiles(x, samples.u=samples.u)
@@ -205,7 +199,7 @@ prob_nd_vine_forecast <- function(data.input, location, time,
 }
 
 #' Check class
-is.prob_nd_vine_forecast <- function(x) inherits(x, "prob_nd_vine_forecast")
+is.fc_vine <- function(x) inherits(x, "fc_vine")
 
 #' Calculate lists of variable-to-uniform domain transforms for all dimensions
 #'
@@ -245,7 +239,7 @@ get_transform_with_unique_xmin_max <- function(idx, dat, cdf.method, ...) {
 #' Sample the vine copula model and sum to calculate samples of the univariate, aggregate power forecast
 #'
 #' @return A column matrix of aggregate powers
-get_1d_samples.prob_nd_vine_forecast <- function(x, samples.u=NA) {
+get_1d_samples.fc_vine <- function(x, samples.u=NA) {
   # Get new samples from the copula, if needed.
   if (!(is.numeric(samples.u))) {
     samples.u <- rvinecopulib::rvinecop(x$n, x$model)
@@ -259,13 +253,13 @@ get_1d_samples.prob_nd_vine_forecast <- function(x, samples.u=NA) {
 
 #' Calculate forecast quantiles from samples of the vine copula
 #'
-#' @param x prob_nd_vine_forecast object
+#' @param x fc_vine object
 #' @param samples (optional) previously obtained 1-D samples to use instead of new sampling, e.g. for coordination with cVaR calculation
 #' @param samples.u (optional) previously obtained n-d samples to use instead of new sampling, e.g. for static vine copula model.
 #' samples overrides samples.u if both are given
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, samples.u=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_vine <- function(x, samples=NA, samples.u=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x, samples.u)}
@@ -278,11 +272,11 @@ calc_quantiles.prob_nd_vine_forecast <- function(x, samples=NA, samples.u=NA, qu
 
 #' Calculate VaR and CVaR from sampled data. CVaR calculation is done directly from the samples, rather than estimated from a fitted distribution.
 #'
-#' @param x prob_nd_vine_forecast object
+#' @param x fc_vine object
 #' @param samples (optional) previously obtained samples to use instead of new sampling, e.g. for coordination with quantiles calculation
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return list of var, cvar
-CVAR.prob_nd_vine_forecast <- function(x, samples=NA, epsilon=c(0.05, 0.95)) {
+CVAR.fc_vine <- function(x, samples=NA, epsilon=c(0.05, 0.95)) {
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x)}
   if (any(epsilon <= 0) | any(epsilon >= 1)) stop("Bad input. Epsilon's must be in (0,1).")
 
@@ -295,10 +289,10 @@ CVAR.prob_nd_vine_forecast <- function(x, samples=NA, epsilon=c(0.05, 0.95)) {
 
 #' Estimate the joint probability density
 #'
-#' @param x A prob_nd_vine_forecast object
+#' @param x A fc_vine object
 #' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
 #' @return an joint probability density array
-get_joint_density_grid.prob_nd_vine_forecast <- function(x, k=100) {
+get_joint_density_grid.fc_vine <- function(x, k=100) {
   # Get evaluation grid
   eval_points <- get_variable_domain_grid(x, k)
 
@@ -318,7 +312,7 @@ get_joint_density_grid.prob_nd_vine_forecast <- function(x, k=100) {
 
 #' Get a grid of evaluation points in the variable domain, based on the range of the marginal distribution estimation
 #'
-#' @param x A prob_nd_vine_forecast object
+#' @param x A fc_vine object
 #' @param k Integer or vector of number of samples to take along each dimension. If given an integer, all dimensions have the same number of samples.
 #' @return a grid of points size k^n
 get_variable_domain_grid <- function(x, k) {
@@ -336,8 +330,8 @@ get_variable_domain_grid <- function(x, k) {
 #' Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
 #' from the kde results.
 #'
-#' @param x prob_nd_vine_forecast object
-plot_pdf.prob_nd_vine_forecast <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95)) {
+#' @param x fc_vine object
+plot_pdf.fc_vine <- function(x, cvar=FALSE, epsilon=c(0.05, 0.95)) {
   # Assume data is power or irradiance and must be non-negative
   samples <- get_1d_samples(x)
   epdf <- stats::density(samples, from=0)
@@ -383,8 +377,8 @@ qc_input <- function(dat) {
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param max_power Maximum power for normalizing forecast to [0,1]
-#' @return A 1-dimensional probabilistic forecast object
-prob_1d_rank_forecast <- function(data.input, location, time, max_power, ...) {
+#' @return A probabilistic forecast object
+fc_binned <- function(data.input, location, time, max_power, ...) {
   members <- qc_input(data.input)
 
   # Initialize probabilistic forecast
@@ -393,21 +387,21 @@ prob_1d_rank_forecast <- function(data.input, location, time, max_power, ...) {
               time = time,
               d = 1)
 
-  x <- structure(dat, class = c("prob_forecast", "prob_1d_rank_forecast"))
+  x <- structure(dat, class = c("prob_forecast", "fc_binned"))
   x$quantiles <- calc_quantiles(x)
 
   return(x)
 }
 
 #' Check class
-is.prob_1d_rank_forecast <- function(x) inherits(x, "prob_1d_rank_forecast")
+is.fc_binned <- function(x) inherits(x, "fc_binned")
 
 #' Calculate forecast quantiles
 #'
-#' @param x prob_1d_rank_forecast object
+#' @param x fc_binned object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_binned <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
 
@@ -417,9 +411,56 @@ calc_quantiles.prob_1d_rank_forecast <- function(x, quantiles=seq(0.001, 0.999, 
 
 #' Not implemented
 #'
-#' @param x prob_1d_rank_forecast object
-plot_pdf.prob_1d_rank_forecast <- function(x) {
-  stop("Not implemented for 1D rank forecasts.")
+#' @param x fc_binned object
+plot_pdf.fc_binned <- function(x) {
+  stop("Not implemented for binned probability forecasts.")
+}
+
+# ---------------------------------------------------------------------------------------------
+
+#' Initialize a forecast using an empirical (stepped, not interpolated) CDF of a training set.
+#' Can be applied for a climatology, raw ensemble, or persistence ensemble type forecast.
+#'
+#' @param data.input A numeric vector of training data
+#' @param location A string
+#' @param time A lubridate time stamp
+#' @return A probabilistic forecast object
+fc_empirical <- function(data.input, location, time, ...) {
+  data.input <- qc_input(data.input)
+
+  # Initialize probabilistic forecast
+  dat <- list(location = location,
+              time = time,
+              d = 1)
+
+  x <- structure(dat, class = c("prob_forecast", "fc_empirical"))
+  x$quantiles <- calc_quantiles(x, telemetry=data.input)
+
+  return(x)
+}
+
+#' Check class
+is.fc_empirical <- function(x) inherits(x, "fc_empirical")
+
+#' Calculate forecast quantiles
+#'
+#' @param x fc_empirical object
+#' @param telemetry A vector of telemetry to generate the empirical cdf from
+#' @param quantiles Sequence of quantiles in (0,1)
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.fc_empirical <- function(x, telemetry=FALSE, quantiles=seq(0.001, 0.999, by=0.001)) {
+  if (all(!telemetry)) stop("telemetry is a required input.")
+  error_check_calc_quantiles_input(quantiles)
+  xseq <- stats::quantile(telemetry, probs=quantiles, names=F, na.rm=T, type=1)
+
+  return(list(x=xseq, q=quantiles))
+}
+
+#' Not implemented
+#'
+#' @param x fc_empirical object
+plot_pdf.fc_empirical <- function(x) {
+  stop("Not implemented for empirical forecasts.")
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -432,8 +473,8 @@ plot_pdf.prob_1d_rank_forecast <- function(x) {
 #' @param model A pre-fit BMA model from beta1_ens_models
 #' @param max_power Maximum power for normalizing forecast to [0,1]
 #' @param ... Additional parameters
-#' @return A 1-dimensional probabilistic forecast object
-prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, ...) {
+#' @return A probabilistic forecast object
+fc_bma <- function(data.input, location, time, model, max_power, ...) {
   # Sanity check inputs; skip if model is missing
   if (all(is.na(model))) return(NA)
 
@@ -448,7 +489,7 @@ prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, .
               members=data.input,
               max_power=max_power
   )
-  x <- structure(dat, class = c("prob_forecast", "prob_1d_bma_forecast"))
+  x <- structure(dat, class = c("prob_forecast", "fc_bma"))
 
   # Complete probabilistic forecast by sampling and aggregating
   dc_model <- get_discrete_continuous_model(x)
@@ -458,7 +499,7 @@ prob_1d_bma_forecast <- function(data.input, location, time, model, max_power, .
 }
 
 #' Check class
-is.prob_1d_bma_forecast <- function(x) inherits(x, "prob_1d_bma_forecast")
+is.fc_bma <- function(x) inherits(x, "fc_bma")
 
 #' Specific quality control handling for BMA forecasts, for missing members that have already been trained in the model.
 #' Reallocates member weights if necessary
@@ -473,10 +514,10 @@ qc_bma_input <- function(members, model) {
 }
 
 #' Calculate forecast quantiles
-#' @param x prob_1d_bma_forecast object
+#' @param x fc_bma object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_bma <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
   if (all(is.na(model))) model <- get_discrete_continuous_model(x)
@@ -488,7 +529,7 @@ calc_quantiles.prob_1d_bma_forecast <- function(x, model=NA, quantiles=seq(0.001
   return(list(x=xseq, q=quantiles, d=d))
 }
 
-#' @param x prob_1d_bma_forecast object
+#' @param x fc_bma object
 #' @param xseq Vector of x values in [0,1] to evaluate
 #' @param discrete Boolean of whether to return density with a discrete component (approximate) or with the continuous estimation (congruent with CDF)
 #' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
@@ -587,7 +628,7 @@ get_beta_distribution_geometry_code <- function(alpha, beta) {
 
 #' Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
 #' @param discrete Boolean on whether to plot a discrete component as approximation or the continuous equivalent above the clipping threshold
-plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
+plot_pdf.fc_bma <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
 
   model <- get_discrete_continuous_model(x, discrete=discrete)
 
@@ -634,8 +675,8 @@ plot_pdf.prob_1d_bma_forecast <- function(x, actual=NA, ymax=NA, normalize=F, di
 #' @param time A lubridate time stamp
 #' @param cdf.method KDE method selection, see kde_methods.R for details
 #' @param ... Additional parameters passed on the KDE method
-#' @return A 1-dimensional probabilistic forecast object
-prob_1d_kde_forecast <- function(data.input, location, time, cdf.method='geenens', ...) {
+#' @return A probabilistic forecast object
+fc_kde <- function(data.input, location, time, cdf.method='geenens', ...) {
   members <- qc_input(data.input)
 
   func <- marginal_lookup(cdf.method)
@@ -648,7 +689,7 @@ prob_1d_kde_forecast <- function(data.input, location, time, cdf.method='geenens
               d = 1,
               model=model
               )
-  x <- structure(dat, class = c("prob_forecast", "prob_1d_kde_forecast"))
+  x <- structure(dat, class = c("prob_forecast", "fc_kde"))
 
   # Complete probabilistic forecast by sampling and aggregating
   x$quantiles <- calc_quantiles(x)
@@ -656,14 +697,14 @@ prob_1d_kde_forecast <- function(data.input, location, time, cdf.method='geenens
 }
 
 #' Check class
-is.prob_1d_kde_forecast <- function(x) inherits(x, "prob_1d_kde_forecast")
+is.fc_kde <- function(x) inherits(x, "fc_kde")
 
 #' Calculate forecast quantiles from KDE
 #'
-#' @param x prob_1d_kde_forecast object
+#' @param x fc_kde object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_kde <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=quantiles)$y
 
@@ -672,10 +713,10 @@ calc_quantiles.prob_1d_kde_forecast <- function(x, quantiles=seq(0.001, 0.999, b
 
 #' Calculate VaR and CVaR by trapezoidal integration.
 #'
-#' @param x prob_1d_kde_forecast object
+#' @param x fc_kde object
 #' @param epsilon Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)
 #' @return list of var, cvar
-CVAR.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
+CVAR.fc_kde <- function(x, epsilon=c(0.05, 0.95)) {
   if (any(epsilon <= 0) | any(epsilon >= 1)) stop("Bad input. Epsilon's must be in (0,1).")
 
   var_low <- stats::approx(x=x$model$u, y=x$model$x, xout=epsilon[1])$y
@@ -692,8 +733,8 @@ CVAR.prob_1d_kde_forecast <- function(x, epsilon=c(0.05, 0.95)) {
 
 #' Plot probability density
 #'
-#' @param x prob_1d_kde_forecast object
-plot_pdf.prob_1d_kde_forecast <- function(x) {
+#' @param x fc_kde object
+plot_pdf.fc_kde <- function(x) {
   plot(x$model$x, x$model$d, xlab='Power [MW]', ylab='Probability density', sub = paste("Location: ", x$location, ", Time:", x$time),
        type='l', lwd=2)
 }

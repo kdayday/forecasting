@@ -2,6 +2,7 @@ context("Test forecasting context")
 
 library(forecasting)
 library(lubridate)
+library(pracma)
 
 mock_calc <- function(x, sun_up, start_time, time_step, scale, location, method, ...) "Calculated"
 fake_class <- function(data.input, location, time, ...) sum(data.input)
@@ -17,7 +18,7 @@ identity <- function(i) {i}
 test_that("ts_forecast object initialization and sun-up calculation", {
   # Includes testing of the new_ts_forecast subfunction
   with_mock(calc_forecasts = mock_calc,
-  OUT <- ts_forecast(array(c(0, NA, 3), dim=c(3, 1)), start_time, time_step, 'site', 'Odessa', 'rank'))
+  OUT <- ts_forecast(array(c(0, NA, 3), dim=c(3, 1)), start_time, time_step, 'site', 'Odessa', 'binned'))
   expect_identical(OUT$forecasts, 'Calculated')
   expect_identical(class(OUT), 'ts_forecast')
   expect_equal(OUT$sun_up, c(FALSE, FALSE, TRUE))
@@ -25,7 +26,7 @@ test_that("ts_forecast object initialization and sun-up calculation", {
 
 test_that("ts_forecast object initialization and sun-up calculation with a pre-calculated list of forecasts", {
   forecasts <- list(NA, structure(list(a=1), class="prob_forecast"), NA)
-  OUT <- ts_forecast(forecasts, start_time, time_step, 'site', 'Odessa', 'rank')
+  OUT <- ts_forecast(forecasts, start_time, time_step, 'site', 'Odessa', 'binned')
   expect_equal(OUT$sun_up, c(FALSE, TRUE, FALSE))
 })
 
@@ -53,10 +54,11 @@ test_that("ts_forecast calculation inserts NA's when sun is down", {
 })
 
 test_that("ts_forecast class lookup is correct", {
-  expect_identical(get_forecast_class('Site', 'kde')$class, prob_1d_kde_forecast)
+  expect_identical(get_forecast_class('Site', 'kde')$class, fc_kde)
   expect_identical(get_forecast_class('Site', 'kde')$dim, '1')
-  expect_identical(get_forecast_class('Site', 'rank')$class, prob_1d_rank_forecast)
-  expect_identical(get_forecast_class('Site', 'bma')$class, prob_1d_bma_forecast)
+  expect_identical(get_forecast_class('Site', 'binned')$class, fc_binned)
+  expect_identical(get_forecast_class('Site', 'bma')$class, fc_bma)
+  expect_identical(get_forecast_class('Site', 'empirical')$class, fc_empirical)
   expect_error(get_forecast_class('region', 'vine'), "Not implemented*")
   expect_error(get_forecast_class('T', 't'))
 })
@@ -77,7 +79,7 @@ test_that("ts_forecast calculate passes options through.", {
   opt2 <- 22
   fake_class3 <- function(data.input, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}
   with_mock(get_forecast_class=function(x,y) return(list(class=fake_class3, dim='n')),
-            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='rank', opt1=opt1, opt2=opt2))
+            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='binned', opt1=opt1, opt2=opt2))
   expect_equal(out[[1]]$thing1, opt1)
   expect_equal(out[[1]]$thing2, opt2)
 })
@@ -85,7 +87,7 @@ test_that("ts_forecast calculate passes options through.", {
 test_that("ts_forecast calculate handles additional time-series arguments correctly ", {
   fake_class3 <- function(data.input, location, time, opt1, opt2) {return(list(thing1=opt1, thing2=opt2))}
   with_mock(get_forecast_class=function(x,y) return(list(class=fake_class3, dim='n')),
-            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='rank',
+            out <- calc_forecasts(array(1:3, dim=c(3,1,1)), sun_up=c(TRUE, TRUE, FALSE), start_time=ymd(20160101), time_step=1, scale='site', location='TX', method='binned',
                                   MoreTSArgs = list(opt1=3:5, opt2=7:9)))
   expect_equal(out[[1]]$thing1, 3)
   expect_equal(out[[2]]$thing2, 8)
@@ -192,6 +194,12 @@ test_that("Plot ts_forecast throws error", {
   expect_error(plot(structure(list(NA), class="prob_forecast"), window=c(1,4,5)))
 })
 
+test_that("Plot and write index subfunction is correct", {
+  expect_equal(get_index_window(21:30, window=NA), 1:10)
+  expect_equal(get_index_window(21:30, window=c(2, 8)), 2:8)
+})
+
+
 test_that("Time series of values at certain quantile is extracted correctly.", {
   expect_equal(get_quantile_time_series(ts, 20), c(NA, 20, 10))
 })
@@ -211,23 +219,75 @@ test_that("Avg CRPS score handles telemetry longer than forecast", {
   tel <- c(25, 30, 35)
   with_mock(equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=tel, tel_2_fc=2, translate_forecast_index=identity)),
             CRPS=function(x, tel, ...) return(tel),
-            expect_equal(CRPS_avg(ts, tel=tel, agg=FALSE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)))),
-            expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)))))
+            expect_equal(CRPS_avg(ts, tel=tel, agg=FALSE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)), median=32.5)),
+            expect_equal(CRPS_avg(ts, tel=tel, agg=TRUE), list(mean=32.5, min=30, max=35, sd=stats::sd(c(30, 35)), median=32.5)))
 })
 
-test_that("Brier score is as expected", {
+test_that("Weighted QS function throws error", {
+  expect_error(weight_QS(qs=c(1,1), quantiles=c(0.2, 0.5, 0.7), weighting="none"), "*same length")
+})
+
+test_that("Weighted QS with no weight is correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="none"), c(1,1,1))
+})
+
+test_that("Left-tail weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="left"), c(0.64, 0.25, 0.09))
+})
+
+test_that("Right-tail weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="right"), c(0.04, 0.25, 0.49))
+})
+
+test_that("Center weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="center"), c(0.16, 0.25, 0.21))
+})
+
+test_that("Tails weighted quantile scores are correct", {
+  expect_equal(weight_QS(qs=c(1,1,1), quantiles=c(0.2, 0.5, 0.7), weighting="tails"), c(0.36, 0, 0.16))
+})
+
+test_that("Reliability index is correct", {
+  with_mock(calc_PIT_histogram=function(ts, tel, nbins, ...) return(list(bin_hits=c(0, 3, 9))),
+            expect_equal(RI(ts=NA, tel=NA, nbins=3), 10/12))
+})
+
+test_that("Percentile reliability index is correct", {
+  with_mock(calc_PIT_histogram=function(ts, tel, ...) return(list(bin_hits=c(4, 5, 6, 7, 3, rep(5, times=95)))),
+            expect_equal(PRI(ts=NA, tel=NA), 0.008))
+})
+
+
+test_that("Quantile score is as expected", {
+  ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  with_mock(get_quantile_time_series=function(ts,y) return(sapply(ts$forecasts, FUN=function(forecast) {
+    if (!all(is.na(forecast))) return(forecast$quantiles$x[y/10]) else return(NA)})),
+            expect_equal(QS(ts, c(0, 40, 5, NA), quantiles=c(0.2, 0.5, 0.7)), c(8, 15 , 18))) # 2*mean(0.2*20, 0.8*5)=8, (0.5*10, 0.5*20), (0.3*30, 0.3*30)
+})
+
+test_that("Brier score of a quantile is as expected", {
   ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(tel=c(0, 40, 5, 15), fc=ts, translate_forecast_index=identity)),
-    expect_equal(Brier(ts, tel=NA, PoE=.8), 0.24)) # mean( (-0.2)^2, (0.8)^2, (-0.2)^2) = (0.64 +0.04 + 0.04)/3 = 0.24
+    expect_equal(Brier_quantile(ts, tel=NA, PoE=.8), 0.24)) # mean( (-0.2)^2, (0.8)^2, (-0.2)^2) = (0.64 +0.04 + 0.04)/3 = 0.24
 })
 
-test_that("Brier score calculation handles NaN's", {
+test_that("Brier score calculation of a quantile handles NaN's", {
   fake_ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
   with_mock(get_quantile_time_series=function(x,y) return(c(20, 20, 10, 10)),
             equalize_telemetry_forecast_length=function(tel, ts, ...) return(list(fc=ts, tel=c(0, 40, 5, NA), translate_forecast_index=identity)),
-            expect_equal(Brier(fake_ts, tel=NA, PoE=.8), 0.34))
+            expect_equal(Brier_quantile(fake_ts, tel=NA, PoE=.8), 0.34))
   })
+
+test_that("Brier score for power threshold is correct", {
+  ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  expect_equal(Brier(ts, tel=c(0, 40, 5, NA), thresholds=10), 0.325) # mean( (0.1)^2 , (-0.8)^2) = (0.01 + 0.64)/2 = 0.325
+})
+
+test_that("Brier score for power handles a vector of thresholds", {
+  ts <- structure(list(forecasts=list(NA, x1, x2, x2), sun_up=c(FALSE, TRUE, TRUE, TRUE)), class='ts_forecast')
+  expect_equal(Brier(ts, tel=c(0, 40, 5, NA), thresholds=c(10, 45, 20)), c(0.325, 0.15625, 0.2)) # mean( (-0.55)^2 , (-0.1)^2) = (0.3025 + 0.01)/2 = 0.15625
+})
 
 test_that("MAE calculation is correct.", {
   with_mock(get_quantile_time_series=function(x,y) return(c(50, 50, 25)),

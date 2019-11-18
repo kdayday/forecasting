@@ -25,7 +25,7 @@ marginal_lookup <- function(method) {
 #' @return A list of the evaluation points, density, and cumulative distribution
 probprecalc <- function(x, ...) {
   # Add backwards compatibility to calculate density with the same x vector
-  if (!(is.prob_1d_bma_forecast(x))) stop("Precalculated marginal lookup currently just set up for BMA forecasts. ")
+  if (!(is.fc_bma(x))) stop("Precalculated marginal lookup currently just set up for BMA forecasts. ")
   if (!("d" %in% names(x$quantiles))) {
     quantiles <- calc_quantiles(x)
   } else quantiles <- x$quantiles

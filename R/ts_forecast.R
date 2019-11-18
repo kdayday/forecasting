@@ -7,10 +7,10 @@ ts_forecast <- function(x, ...) {
 #' Construct a time series of power forecasts, using input training data. Assumes training data already captures
 #' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
 #'
-#' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
+#' @param x An array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast
 #' @param start_time A lubridate time stamp
 #' @param time_step Time step in hours
-#' @param scale One of 'site', 'region', 'total'
+#' @param scale One of 'region', 'total'
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
 #' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
@@ -29,10 +29,10 @@ ts_forecast.array <- function(x, start_time, time_step, scale, location, method,
 #' Construct a time series of power forecasts, using input training data. Assumes training data already captures
 #' differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
 #'
-#' @param x A matrix or array of training data of dimensions [time x ntrain x nsites] for n-dimensional forecast or [time x ntrain] for a 1-dimensional forecast
+#' @param x A matrix of training data of dimensions [time x ntrain] for a 1-dimensional forecast
 #' @param start_time A lubridate time stamp
 #' @param time_step Time step in hours
-#' @param scale One of 'site', 'region', 'total'
+#' @param scale Must be "site"
 #' @param location A string
 #' @param method One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')
 #' @param sun_up_threshold An absolute [MW] threshold on the ensemble members to remove dubious sunrise/sunset valud
@@ -143,14 +143,15 @@ calc_forecasts <- function(x, sun_up, start_time, time_step, scale, location, me
 #' Look-up function of the forecast class type
 #'
 #' @param scale One of 'site', 'region', 'total'
-#' @param method One of 'rank' if scale is 'site', else one of gaussian', 'empirical', 'vine'
+#' @param method One of 'binned' if scale is 'site', else one of gaussian', 'empirical', 'vine'
 #' @return A function to initialize a forecast of the desired type
 get_forecast_class <- function(scale, method){
   if (tolower(scale) %in% c("site")){
     cls <- switch(tolower(method),
-                  "rank" = prob_1d_rank_forecast,
-                  "kde" = prob_1d_kde_forecast,
-                  "bma" = prob_1d_bma_forecast,
+                  "binned" = fc_binned,
+                  "kde" = fc_kde,
+                  "bma" = fc_bma,
+                  "empirical" = fc_empirical,
                   stop(paste('Forecast type', method, 'not recognized for single-site forecasts.', sep=' ')))
     d <- '1'
   } else if (tolower(scale) %in% c("region", "total")){
@@ -172,28 +173,49 @@ length.ts_forecast <- function(x) {
 #' @param x A ts_forecast object
 #' @param tel vector of telemetry (optional)
 #' @param window (optional) A vector of (start index, end index) to plot certain time window
-plot.ts_forecast <- function(x, tel=NA, window=NA) {
-  if (all(!(is.na(window))) & length(window)!=2) stop("To use time window, must give a vector of starting and ending indices")
-
-  start <- ifelse(all(is.na(window)), 1, window[1])
-  end <- ifelse(all(is.na(window)), length(x), window[2])
-  indices <- start:end
+plot.ts_forecast <- function(x, tel=NA, window=NA, normalize.by=1) {
+  indices <- get_index_window(x, window)
 
   probs <- x$forecasts[[min(which(sapply(x$forecasts, FUN=is.prob_forecast)))]]$quantiles$q
   plotdata <- matrix(ncol=length(indices), nrow=length(probs))
   for (i in seq_along(indices)) {
     if (is.prob_forecast(x$forecasts[[indices[i]]])) {
-      plotdata[,i] <- x$forecasts[[indices[i]]]$quantiles$x
+      plotdata[,i] <- x$forecasts[[indices[i]]]$quantiles$x/normalize.by
     } else plotdata[,i] <- 0
   }
-  graphics::plot(NULL, xlim=c(0, length(indices)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab="Power [MW]")
+  graphics::plot(NULL, xlim=c(0, length(indices)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab=ifelse(normalize.by==1, "Power [MW]", "Noramlized Power"))
   fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
                rlab=NULL, start=x$time_step, frequency=1/x$time_step)
   if (any(!is.na(tel))) {
     actuals_time_step <- x$time_step*length(x)/length(tel)
     graphics::lines(seq(from=actuals_time_step, length.out=length(indices)/actuals_time_step, by=actuals_time_step),
-                    tel[((start-1)*actuals_time_step+1):(end*actuals_time_step)], col='chocolate3', lwd=2)
+                    tel[((indices[1]-1)*actuals_time_step+1):(indices[length(indices)]*actuals_time_step)]/normalize.by, col='chocolate3', lwd=2)
   }
+}
+
+#' Export a csv file of [time x quantiles]
+#' Note: this follows the convention of e.g., write.csv and write.table, but write isn't an exported generic function
+#'
+#' @param x A ts_forecast object
+#' @param file A file name
+#' @param window (optional) A vector of (start index, end index) to plot certain time window
+#' @param percentiles (optional -- defaults 1st to 99th percentiles) Select the quantiles associated with which percentiles will be exported
+write.ts_forecast <- function(x, file, window=NA, percentiles=1:99) {
+  indices <- get_index_window(x, window)
+
+  data <- sapply(percentiles, get_quantile_time_series, x=x, simplify="array")
+
+  colnames(data) <- percentiles
+  write.csv(data[indices, ], file=file)
+}
+
+# Helper function to select only a subset of the forecast length
+get_index_window <- function(x, window) {
+  if (all(!(is.na(window))) & length(window)!=2) stop("To use time window, must give a vector of starting and ending indices")
+
+  start <- ifelse(all(is.na(window)), 1, window[1])
+  end <- ifelse(all(is.na(window)), length(x), window[2])
+  indices <- start:end
 }
 
 #' Get a time-series of the forecast value at a particular quantile
@@ -322,7 +344,51 @@ get_sundown_and_NaN_stats <- function(ts, tel, ...) {
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 CRPS_avg <-function(ts, tel, normalize.by=1, ...){
   crps_list <- get_metric_time_series(CRPS, ts, tel, normalize.by, ...)
-  return(list(mean=mean(crps_list, na.rm=T), min=min(crps_list, na.rm=T), max=max(crps_list, na.rm=T), sd=stats::sd(crps_list, na.rm=T)))
+  return(list(mean=mean(crps_list, na.rm=T), min=min(crps_list, na.rm=T), max=max(crps_list, na.rm=T), sd=stats::sd(crps_list, na.rm=T),
+              median=median(crps_list, na.rm=T)))
+}
+
+#' Get the quantile-weighted CRPS (continuous ranked probability score) for the forecast
+#' Estimated by trapezoidal integration of its quantile decomposition
+#' Quantile weighting functions as suggested in Gneiting & Ranjan 2012
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param weighting One of "none" (default), "tails", "right", "left", "center"
+#' @param quantiles (optional) Sequence of quantiles to integrate over
+#' @param qs (optional) A list of quantile scores corresponding to the quantiles
+qwCRPS <-function(ts, tel, weighting="none", quantiles=seq(0.01, 0.99, by=0.01), qs=NA){
+  if (all(is.na(qs))) {
+    if (length(quantiles) != length(qs)) stop("quantile and quantile score vectors must be same length.")
+    qs <- QS(ts, tel, quantiles)
+  }
+  wqs <- weight_QS(qs, quantiles, weighting)
+  return(pracma::trapz(quantiles, wqs))
+}
+
+#' Get the reliability index (RI) as per Delle Monache 2006
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param nbins Number of bins (original ensemble members) to evaluate
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+RI <-function(ts, tel, nbins=100, ...){
+  counts <- calc_PIT_histogram(ts, tel, nbins, ...)$bin_hits
+  return(sum(abs(counts/sum(counts) - 1/nbins)))
+}
+
+#' Get the percentile reliability index (PRI) of quantiles 1 to 99.
+#' An extension of the Delle Monache 2006 to look at distance from probabilistic calibration (P-P plot).
+#' * Note that this looks at the performance at the quantiles, not for each bin -- that is, it is assessed over 99 rather than 100 values
+#'
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param ... optional arguments to equalize_telemetry_forecast_length
+PRI <-function(ts, tel, ...){
+  counts <- calc_PIT_histogram(ts, tel, 100, ...)$bin_hits
+  obs_rate <- cumsum(counts/sum(counts))
+
+  return(sum(abs(seq(0.01, 1, by=0.01) - obs_rate)))
 }
 
 #' Get a time-series of the forecast performance in terms of one metric
@@ -345,6 +411,43 @@ get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NUL
     } else return(NA)})
 }
 
+#' Get weighted quantile score at certain quantile(s)
+#'
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+#' @param quantiles, numeric [0,1].  Can be a scalar or a vector
+#' @return the Quantile score
+QS <- function(ts, tel, quantiles) {
+  if (length(ts) != length(tel)) stop("Forecast and telemetry must be at same time resolution")
+  if (any(quantiles < 0) | any(quantiles > 1)) stop("Quantiles must all be [0,1]")
+
+  thresholds <- t(sapply(100*quantiles, FUN=function(q) {get_quantile_time_series(ts, q)}, simplify="array"))
+
+  valid <- !is.na(ts$forecasts) & !is.na(tel)
+  indicator <- sapply(seq_along(quantiles), FUN=function(i) {as.integer(tel[valid] <= thresholds[i, valid])}, simplify="array")
+
+  qs <- sapply(seq_along(quantiles), FUN=function(q) mean(2*(indicator[,q]-quantiles[q])*(thresholds[q,valid]-tel[valid]), na.rm = TRUE))
+  return(qs)
+}
+
+#' Calculate a vector of weighted quantile scores, emphasizing one or both tails or center
+#'
+#' @param qs A vector of quantile scores
+#' @param quantiles A vector of the quantiles (percentiles) in [0,1]
+#' @param weighting One of "none" (default), "tails", "right", "left", "center"
+#' @return A vector of the weighted scores
+weight_QS <- function(qs, quantiles, weighting="none") {
+  if (length(qs) != length(quantiles)) stop("Quantiles and quantile score must be the same length")
+
+  weights <- switch(tolower(weighting),
+                    "none" = 1,
+                    "tails" = (2*quantiles-1)^2,
+                    "right" = quantiles^2,
+                    "left" = (1-quantiles)^2,
+                    "center" = quantiles*(1-quantiles),
+                    stop("Weighting method not recognized"))
+  return(weights*qs)
+}
 
 #' Get Brier score at a certain probability of exceedance
 #' This is calculated with a constant probability threshold, rather than a constant value threshold
@@ -354,7 +457,7 @@ get_metric_time_series <- function(metric, ts, tel, normalize.by, metricArgs=NUL
 #' @param PoE Threshold probability of exceedance, numeric [0,1]
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return the Brier score
-Brier <- function(ts, tel, PoE, ...) {
+Brier_quantile <- function(ts, tel, PoE, ...) {
   if (PoE < 0 | PoE > 1) stop(paste("Probability of exceedance must be [0,1], given ", PoE, '.', sep=''))
   thresholds <- get_quantile_time_series(ts, 100*(1-PoE))
 
@@ -369,16 +472,51 @@ Brier <- function(ts, tel, PoE, ...) {
   return(mean((PoE-indicator)^2, na.rm = TRUE))
 }
 
-# Plot Brier score along the quantiles from 1 to 99
+#' Get Brier score at power thresholds
+#'
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param thresholds Thresholds in units of the forecast. Can be a scalar or a vector
+#' @return the Brier score
+Brier <- function(ts, tel, thresholds) {
+  if (length(ts) != length(tel)) stop("Forecast and telemetry must be at same time resolution")
+  pit <- array(sapply(ts$forecasts, FUN=function(forecast, thresholds) {
+    if (is.prob_forecast(forecast)) return(stats::approx(forecast$quantiles$x, forecast$quantiles$q, thresholds, yleft=0, yright=1)$y)
+    else return(rep(NA, times=length(thresholds)) )},
+    thresholds=thresholds, simplify="array"), dim=c(length(thresholds), length(tel)))
+
+  valid <- !is.na(ts$forecasts) & !is.na(tel)
+  indicator <- sapply(seq_along(thresholds), FUN=function(i) as.integer(tel[valid] <= thresholds[i]), simplify="array")
+
+  bs <- sapply(seq_along(thresholds), FUN=function(i) mean((pit[i, valid]-indicator[,i])^2, na.rm = TRUE))
+
+  return(bs)
+}
+
+plot_quantile_score <- function(ts, tel, quantiles=seq(0.01, 0.99, by=0.01), weighting="none") {
+  qs <- QS(ts, tel, quantiles)
+  wqs <- weight_QS(qs, quantiles, weighting)
+
+  if (weighting=="none") label<- "" else label <- paste(weighting,"-weighted", sep="")
+
+  g <- ggplot2::ggplot(data=data.frame(x=quantiles, y=wqs), mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_point() +
+    ggplot2::xlab("Quantile") +
+    ggplot2::ylab(paste(label, "Quantile Score"))
+
+  plot(g)
+}
+
+# Plot Brier score along the quantiles from 1 to 99
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
 #' @param nmem Number of ensemble members, to illustrate the n+1 bins
-plot_brier <- function(ts, tel, nmem = NA) {
+plot_brier_by_quantile <- function(ts, tel, nmem = NA) {
   q <- 1:99
-  b <- sapply(q, FUN = function(qi) Brier(ts, tel, (100-qi)/100))
+  b <- sapply(q, FUN = function(qi) Brier_quantile(ts, tel, (100-qi)/100))
 
   g <- ggplot2::ggplot(data=data.frame(x=q, y=b), mapping=ggplot2::aes(x=x, y=y)) +
-      ggplot2::xlab("Quantile") +
+      ggplot2::xlab("Percentile") +
       ggplot2::ylab("Brier score") +
       ggplot2::theme_light()
 
@@ -390,6 +528,23 @@ plot_brier <- function(ts, tel, nmem = NA) {
   }
   g <- g + ggplot2::geom_point() +
         ggplot2::geom_line(data=data.frame(x=q, y=q/100*(100-q)/100))
+
+  plot(g)
+}
+
+# Plot Brier score in terms of power
+#' @param ts A ts_forecast object
+#' @param tel A vector of the telemetry values
+#' @param xseq A vector of the power thresholds to use
+plot_brier_by_power <- function(ts, tel, xseq) {
+
+  b <- Brier(ts, tel, xseq)
+
+  g <- ggplot2::ggplot(data=data.frame(x=xseq, y=b), mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_line() +
+    ggplot2::xlab("Power [MW]") +
+    ggplot2::ylab("Brier score") +
+    ggplot2::ggtitle(paste("CRPS:", signif(pracma::trapz(xseq, b), digits = 6), "[MW]"))
 
   plot(g)
 }
@@ -457,10 +612,9 @@ plot_reliability <- function(ts, tel, ...) {
   ggplot2::ggplot(data.frame(x=x$quantiles, y=x$quantiles), ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line() +
     ggplot2::geom_point(data=data.frame(x=x$quantiles[1:(length(x$quantiles)-1)], y=cumsum(x$hit_rate)[1:(length(x$quantiles)-1)]), shape=1) +
-    ggplot2::xlab("Nominal Cumulative Distribution") +
-    ggplot2::ylab("Observed Cumulative Distribution")
+    ggplot2::xlab("Nominal Proportion") +
+    ggplot2::ylab("Observed Proportion")
 }
-
 
 #' Plot probability integral transform histogram
 #' @param ts A ts_forecast object
@@ -497,28 +651,27 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
 #' Evaluate forecast reliability by evaluating the actual hit rate of the quantile bins
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param quantiles A list of the quantiles to evaluate
 #' @param ... optional arguments to equalize_telemetry_forecast_length
-#' @param quants Provide a vector of bin breakpoints, or NA to use the given quantiles
 #' @return list of the quantiles and their hit rates
-get_quantile_reliability <- function(ts, tel, ..., quants=NA) {
+get_quantile_reliability <- function(ts, tel, quantiles=NA, ...) {
   x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
   forecast_available <- x$fc
 
   # Get the list of quantiles that have been evaluated, and add top limit at 1
-  if (all(is.na(quants))) {
-    quants <- c(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles$q, 1)
-  }
+  quants <- c(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles$q, 1)
+  if (all(is.na(quantiles))) quantiles <- quants
 
   # Find time-points where telemetry and forecast data is available
   indices <- which(forecast_available & !is.na(x$tel))
   q_idx_subfunc <- function(i) {
-    list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x > x$tel[i]) # List of quantile indices above telemetry value
-    if (length(list_idx) > 0) {idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
+    list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x >= x$tel[i]) # List of quantile indices above telemetry value
+    if (length(list_idx) > 0) {idx <- min(which(quantiles >= quants[min(list_idx)]))} else{idx <- length(quantiles)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
     return(idx)
   }
   q_indices <- sapply(indices, q_idx_subfunc) # Get the indices of the corresponding quantile for each time points
-  counts <- sapply(seq_along(quants), function(i) return(sum(q_indices == i)), USE.NAMES = FALSE)
+  counts <- sapply(seq_along(quantiles), function(i) return(sum(q_indices == i)), USE.NAMES = FALSE)
 
   hit_rate <- counts/length(indices)
-  return(list(quantiles=quants, hit_rate=hit_rate, hits=counts))
+  return(list(quantiles=quantiles, hit_rate=hit_rate, hits=counts))
 }
