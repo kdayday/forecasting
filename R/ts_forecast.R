@@ -651,25 +651,27 @@ calc_PIT_histogram <- function(ts, tel, nbins, ...) {
 #' Evaluate forecast reliability by evaluating the actual hit rate of the quantile bins
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param quantiles A list of the quantiles to evaluate
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @return list of the quantiles and their hit rates
-get_quantile_reliability <- function(ts, tel, ...) {
+get_quantile_reliability <- function(ts, tel, quantiles=NA, ...) {
   x <- equalize_telemetry_forecast_length(tel, !is.na(ts$forecasts), ...)
   forecast_available <- x$fc
 
   # Get the list of quantiles that have been evaluated, and add top limit at 1
   quants <- c(ts$forecasts[[min(which(sapply(ts$forecasts, FUN=is.prob_forecast)))]]$quantiles$q, 1)
+  if (all(is.na(quantiles))) quantiles <- quants
 
   # Find time-points where telemetry and forecast data is available
   indices <- which(forecast_available & !is.na(x$tel))
   q_idx_subfunc <- function(i) {
     list_idx <- which(ts$forecasts[[x$translate_forecast_index(i)]]$quantiles$x >= x$tel[i]) # List of quantile indices above telemetry value
-    if (length(list_idx) > 0) {idx <- min(list_idx)} else{idx <- length(quants)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
+    if (length(list_idx) > 0) {idx <- min(which(quantiles >= quants[min(list_idx)]))} else{idx <- length(quantiles)} # Pick lowest quantile, or 100th percentile if it falls outside distribution
     return(idx)
   }
   q_indices <- sapply(indices, q_idx_subfunc) # Get the indices of the corresponding quantile for each time points
-  counts <- sapply(seq_along(quants), function(i) return(sum(q_indices == i)), USE.NAMES = FALSE)
+  counts <- sapply(seq_along(quantiles), function(i) return(sum(q_indices == i)), USE.NAMES = FALSE)
 
   hit_rate <- counts/length(indices)
-  return(list(quantiles=quants, hit_rate=hit_rate, hits=counts))
+  return(list(quantiles=quantiles, hit_rate=hit_rate, hits=counts))
 }
