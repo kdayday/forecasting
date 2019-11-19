@@ -25,7 +25,8 @@ Imports:
     purrr,
     repr,
     rvinecopulib,
-    stats
+    stats,
+    truncnorm
 Suggests:
     colorspace,
     corrplot,

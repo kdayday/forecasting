@@ -470,13 +470,15 @@ plot_pdf.fc_empirical <- function(x) {
 #' @param data.input A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @param model A pre-fit BMA model from beta1_ens_models
+#' @param model A pre-fit BMA model from bma_ens_models
 #' @param max_power Maximum power for normalizing forecast to [0,1]
+#' @param bma_distribution One of "beta", "truncnorm" --> determines the type of distribution used for each member's kernel dressing
 #' @param ... Additional parameters
 #' @return A probabilistic forecast object
-fc_bma <- function(data.input, location, time, model, max_power, ...) {
+fc_bma <- function(data.input, location, time, model, max_power, bma_distribution, ...) {
   # Sanity check inputs; skip if model is missing
   if (all(is.na(model))) return(NA)
+  if (!(bma_distribution %in% c("beta", "truncnorm"))) stop("bma_distribution not recognized. Must be 'beta' or 'truncnorm'.")
 
   # Use specific quality control to handle missing members and adjust model weights accordingly
   model <- qc_bma_input(data.input, model)
@@ -487,7 +489,8 @@ fc_bma <- function(data.input, location, time, model, max_power, ...) {
               d = 1,
               model=model,
               members=data.input,
-              max_power=max_power
+              max_power=max_power,
+              bma_distribution=bma_distribution
   )
   x <- structure(dat, class = c("prob_forecast", "fc_bma"))
 
@@ -522,9 +525,9 @@ calc_quantiles.fc_bma <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.
 
   if (all(is.na(model))) model <- get_discrete_continuous_model(x)
 
-  xseq <- stats::approx(x=model$pbeta, y=model$xseq, xout=quantiles, yleft=0)$y # yright=x$max_power
+  xseq <- stats::approx(x=model$cdf, y=model$xseq, xout=quantiles, yleft=0)$y # yright=x$max_power
 
-  d <- stats::approx(x=model$xseq, y=model$dbeta, xout=xseq, yleft=0, yright = 0)$y
+  d <- stats::approx(x=model$xseq, y=model$pdf, xout=xseq, yleft=0, yright = 0)$y
 
   return(list(x=xseq, q=quantiles, d=d))
 }
@@ -532,83 +535,116 @@ calc_quantiles.fc_bma <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.
 #' @param x fc_bma object
 #' @param xseq Vector of x values in [0,1] to evaluate
 #' @param discrete Boolean of whether to return density with a discrete component (approximate) or with the continuous estimation (congruent with CDF)
-#' @return A list of the discrete components (PoC) and continuous density (dbeta) and distribution (pbeta) for each member
+#' @return A list of the discrete components (PoC) and continuous density (pdf) and distribution (cdf) for each member
 get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.0001), discrete=F) {
   i.thresh <- max(which(xseq < x$model$percent_clipping_threshold))
 
-  shape_params <- get_alpha_betas(x)
+  shape_params <- get_shape_params(x)
 
   # Get geometry codes
-  codes <- mapply(FUN=get_beta_distribution_geometry_code, shape_params$alphas, shape_params$betas)
+  codes <- mapply(FUN=get_beta_distribution_geometry_code, x$bma_distribution, shape_params$param1s, shape_params$param2s)
   geometries <- list("U type"=sum(codes==1), "Reverse J"=sum(codes==2), "J-type"=sum(codes==3), "Upside-down U"=sum(codes==4), "Missing"=sum(codes==0))
 
 
   # Get sequence of beta cumulative distribution, by ensemble member. Returns matrix of [xseq x members]
-  pbeta_seq <- mapply(pbeta_subfunction, shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w,
-                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh))
+  cdf_member <- mapply(cdf_subfunction, shape_params$param1s, shape_params$param2s, shape_params$PoC, x$model$w,
+                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh, bma_distribution=x$bma_distribution, max_power=x$max_power))
 
   # Get sequence of beta probability densities, by ensemble member. Returns matrix of [xseq x members]
-  dbeta_seq <- mapply(dbeta_subfunction, shape_params$alphas, shape_params$betas, shape_params$PoC, x$model$w,
-                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh, discrete=discrete))
+  pdf_member <- mapply(pdf_subfunction, shape_params$param1s, shape_params$param2s, shape_params$PoC, x$model$w,
+                      MoreArgs = list(xseq=xseq, i.thresh=i.thresh, discrete=discrete, bma_distribution=x$bma_distribution, max_power=x$max_power))
 
   # Calculate overall distribution
   PoC_total <- sum(x$model$w*shape_params$PoC, na.rm=T)
-  dbeta_total <- apply(X=dbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
-  pbeta_total <- apply(X=pbeta_seq, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  pdf_total <- apply(X=pdf_member, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
+  cdf_total <- apply(X=cdf_member, MARGIN=1, FUN=function(row) sum(row, na.rm=T))
   # Ensure pbeta sums to 1 after weighting and summing
-  if (max(pbeta_total) > 1) pbeta_total <- pbeta_total/max(pbeta_total)
+  if (max(cdf_total) > 1) cdf_total <- cdf_total/max(cdf_total)
 
   # Invert normalization of beta components back to [0, max power]
-  return(list(PoC=PoC_total, dbeta=dbeta_total/x$max_power, pbeta=pbeta_total, xseq=xseq*x$max_power, geometries=geometries,
-              members=list(PoC=shape_params$PoC, dbeta=dbeta_seq/x$max_power, pbeta=pbeta_seq, codes=codes)))
+  return(list(PoC=PoC_total, pdf=pdf_total/x$max_power, cdf=cdf_total, xseq=xseq*x$max_power, geometries=geometries,
+              members=list(PoC=shape_params$PoC, pdf=pdf_member/x$max_power, cdf=cdf_member, codes=codes)))
 }
 
 # Get cumulative distribution for individual ensemble member
-pbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh) {
-  pb <- stats::pbeta(xseq[1:i.thresh], a, b)
-  pb.continuous <- (1-poc)*pb/max(pb)
+#' @param param1 First parameter: alpha for a beta distribution; mean for a truncnorm
+#' @param param2 First parameter: beta for a beta distribution; sd for a truncnorm
+#' @param bma_distribution "beta" or "truncnorm"
+cdf_subfunction <- function(param1, param2, poc, w, xseq, i.thresh, bma_distribution, max_power) {
+  if (bma_distribution=="beta") {
+    p <- stats::pbeta(xseq[1:i.thresh], param1, param2)
+  } else if (bma_distribution=="truncnorm") {
+    p <- truncnorm::ptruncnorm(xseq[1:i.thresh], a=0, b=max_power, mean=param1, sd=param2)
+  } else stop(paste("bma_distribution not recognized. Given", bma_distribution))
+
+  distribution.continuous <- (1-poc)*p/max(p)
   dx <- xseq[length(xseq)]-xseq[i.thresh]
 
   # Model discrete component as a linear increase over the clipping bandwidth: y = mx + b, where b=1-poc, m=poc/clipping bandwidth
-  pb.discrete <- (1-poc) + seq_along(xseq[(i.thresh+1):length(xseq)])*diff(xseq)[1]*poc/dx
-  return(w * c(pb.continuous, pb.discrete))
+  distribution.discrete <- (1-poc) + seq_along(xseq[(i.thresh+1):length(xseq)])*diff(xseq)[1]*poc/dx
+  return(w * c(distribution.continuous, distribution.discrete))
 }
 
-# Get probability density for individual ensemble member
-# Includes continuous estimation of discrete component, starting at the threshold and extending to 1
-dbeta_subfunction <- function(a, b, poc, w, xseq, i.thresh, discrete) {
+#' Get probability density for individual ensemble member
+#' Includes continuous estimation of discrete component, starting at the threshold and extending to 1
+#' @param bma_distribution "beta" or "truncnorm"
+#' @param param1 First parameter: alpha for a beta distribution; mean for a truncnorm
+#' @param param2 First parameter: beta for a beta distribution; sd for a truncnorm
+pdf_subfunction <- function(param1, param2, poc, w, xseq, i.thresh, discrete, bma_distribution, max_power) {
   if (discrete) {
-    return((1-poc)*w*stats::dbeta(xseq, a, b))
+    if (bma_distribution=="beta") {
+      density <- stats::dbeta(xseq, param1, param2)
+    } else if (bma_distribution=="truncnorm") {
+      density <- truncnorm::dtruncnorm(xseq, a=0, b=max_power, mean=param1, sd=param2)
+    } else stop(paste("bma_distribution not recognized. Given", bma_distribution))
+    return((1-poc)*w*density)
   } else {
-    pb_max <- stats::pbeta(xseq[i.thresh], a, b)
-    db <- stats::dbeta(xseq[1:i.thresh], a, b)
-    db.continuous <- (1-poc)*db/pb_max
+
+    if (bma_distribution=="beta") {
+      distribution_max <- stats::pbeta(xseq[i.thresh], param1, param2)
+      density <- stats::dbeta(xseq[1:i.thresh], param1, param2)
+    } else if (bma_distribution=="truncnorm") {
+      distribution_max <- truncnorm::ptruncnorm(xseq[i.thresh], a=0, b=max_power, mean=param1, sd=param2)
+      density <- truncnorm::dtruncnorm(xseq[1:i.thresh], a=0, b=max_power, mean=param1, sd=param2)
+    } else stop(paste("bma_distribution not recognized. Given", bma_distribution))
+
+    density.continuous <- (1-poc)*density/distribution_max
     dx <- xseq[length(xseq)]-xseq[i.thresh]
 
     # Model discrete component as a linear increase over the clipping bandwidth: y = mx + b, where b=1-poc, m=poc/clipping bandwidth
-    db.discrete <- poc/(xseq[length(xseq)]-xseq[i.thresh]) * rep(1, times=length(xseq[(i.thresh+1):length(xseq)]))
-    return(w * c(db.continuous, db.discrete))
+    density.discrete <- poc/(xseq[length(xseq)]-xseq[i.thresh]) * rep(1, times=length(xseq[(i.thresh+1):length(xseq)]))
+    return(w * c(density.continuous, density.discrete))
   }
 }
 
-get_alpha_betas <- function(x) {
+#' Get shape parameters for either a beta or a truncated normal distribution
+#' @param x A fc_bma object
+#' @return a list of param1s (alpha for a beta distribution; mean for a truncnorm), param2s (beta for a beta distribution; sd for a truncnorm), and POC (probability of clipping)
+get_shape_params <- function(x) {
    # Normalize to [0,1]
    members.norm <- sapply(x$members, function(m) ifelse(m <= x$max_power, m/x$max_power, 1))
 
    # Get parameters for individual ensemble members
    PoC <- mapply(get_poc, members.norm, x$model$A0, x$model$A1, x$model$A2, MoreArgs=list(A_transform=x$model$A_transform))
    rhos <- mapply(get_rho, members.norm, x$model$B0, x$model$B1, MoreArgs = list(B_transform=x$model$B_transform))
-   gammas <- mapply(get_gamma, rhos, MoreArgs = list(C0=x$model$C0))
+   sigmas <- mapply(get_sigma, rhos, MoreArgs = list(C0=x$model$C0))
 
-   # Truncate gammas if needed at a J or reverse-J shape to avoid U-shaped distributions
-   # variance is inversely proportional to gamma, so gamma min leads to variance max
-   gamma_min <- sapply(rhos, function(r) ifelse(r<=0.5, 1/(1-r), 1/r))
-   gammas[gammas < gamma_min & !is.na(gammas)] <- gamma_min[gammas < gamma_min & !is.na(gammas)]
+   if (x$bma_distribution=="beta") {
+     gammas <- mapply(get_gamma, rhos, sigmas)
 
-   alphas <- rhos * gammas
-   betas <- gammas * (1-rhos)
+     # Truncate gammas if needed at a J or reverse-J shape to avoid U-shaped distributions
+     # variance is inversely proportional to gamma, so gamma min leads to variance max
+     gamma_min <- sapply(rhos, function(r) ifelse(r<=0.5, 1/(1-r), 1/r))
+     gammas[gammas < gamma_min & !is.na(gammas)] <- gamma_min[gammas < gamma_min & !is.na(gammas)]
 
-   return(list(alphas=alphas, betas=betas, PoC=PoC))
+     param1s <- rhos * gammas # alphas
+     param2s <- gammas * (1-rhos) #betas
+   } else if (x$bma_distribution=="truncnorm") {
+     param1s <- rhos
+     param2s <- sigmas
+   } else stop(paste("bma_distribution not recognized. Given", x$bma_distribution))
+
+   return(list(param1s=param1s, param2s=param2s, PoC=PoC))
  }
 
 # Broadest geometry categories. Most important is identifying and eliminating U-shaped.
@@ -617,7 +653,9 @@ get_alpha_betas <- function(x) {
 #' 2 -> Reverse J-type
 #' 3 -> J-type
 #' 4 -> Upside-down U type
-get_beta_distribution_geometry_code <- function(alpha, beta) {
+get_beta_distribution_geometry_code <- function(bma_distribution, alpha, beta) {
+  if (bma_distribution == "truncnorm") {return(0)} # Not applicable
+
   if (is.na(alpha) | is.na(beta)) {return(0)}
   if (alpha < 1 & beta < 1) {return(1)}
   else if (alpha < 1 & beta >= 1) {return(2)}
@@ -634,10 +672,10 @@ plot_pdf.fc_bma <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
 
   # Avoid Inf's on the boundaries
   xrange <- 2:(length(model$xseq)-1)
-  ymax <- ifelse(is.na(ymax), max(c(max(model$dbeta[xrange])*ifelse(normalize, x$max_power, 1), model$PoC))*1.1, ymax)
+  ymax <- ifelse(is.na(ymax), max(c(max(model$pdf[xrange])*ifelse(normalize, x$max_power, 1), model$PoC))*1.1, ymax)
 
   g <- ggplot2::ggplot(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
-                                  y=model$dbeta[xrange]*ifelse(normalize, x$max_power, 1)),
+                                  y=model$pdf[xrange]*ifelse(normalize, x$max_power, 1)),
                        mapping=ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line(size=1.3) +
     ggplot2::xlab(ifelse(normalize, "Normalized Power [MW]", "Power [MW]")) +
@@ -655,9 +693,9 @@ plot_pdf.fc_bma <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
                                                 y=c(0, ymax)), linetype="dashed")
   }
 
-  for (i in seq_len(dim(model$members$dbeta)[2])) {
+  for (i in seq_len(dim(model$members$pdf)[2])) {
     g <- g + ggplot2::geom_line(data.frame(x=model$xseq[xrange]/ifelse(normalize, x$max_power, 1),
-                                           y=model$members$dbeta[xrange,i]*ifelse(normalize, x$max_power, 1)),
+                                           y=model$members$pdf[xrange,i]*ifelse(normalize, x$max_power, 1)),
                                 mapping=ggplot2::aes(x=x, y=y), col="black")
   }
 

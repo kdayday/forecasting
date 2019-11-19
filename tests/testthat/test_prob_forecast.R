@@ -320,19 +320,19 @@ test_that("1D BMA forecast discrete-continuous model weighting & summation is co
   xseq <- seq(0.25, 0.75, by=0.25)
   mp <- 10
   fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA, percent_clipping_threshold=0.9),
-                           max_power=mp, members=mem), class = c("prob_forecast", "fc_bma"))
+                           max_power=mp, members=mem, bma_distribution="beta"), class = c("prob_forecast", "fc_bma"))
 
-  with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
-            dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
-            pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
+  with_mock(get_shape_params = function(...) return(list(PoC=PoC, param1s=mem/mp, param2s=mem)),
+            pdf_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
+            cdf_subfunction = function(a, b, poc, w, xseq, i.thresh, ...) return((1-poc)*w*xseq*(a)),
             out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
   expect_equal(out$members$PoC, PoC)
   expect_equal(out$PoC, 0.21)
-  expect_equal(out$members$dbeta, matrix(c(0.5*xseq*0.1*(1)/mp, 0.1*xseq*0.5*(1-0.1)/mp, 0.4*xseq*1*(1-0.5)/mp), ncol=3))
+  expect_equal(out$members$pdf, matrix(c(0.5*xseq*0.1*(1)/mp, 0.1*xseq*0.5*(1-0.1)/mp, 0.4*xseq*1*(1-0.5)/mp), ncol=3))
   expect_equal(out$xseq, xseq*mp)
   mem_sum <- 0.1*1*0.5 + 0.5*0.9*0.1 + 1*0.5*0.4
-  expect_equal(out$dbeta, xseq*mem_sum/mp)
-  expect_equal(out$pbeta, xseq*mem_sum)
+  expect_equal(out$pdf, xseq*mem_sum/mp)
+  expect_equal(out$cdf, xseq*mem_sum)
   expect_equal(out$geometries, list("U type"=0, "Reverse J"=2, "J-type"=0, "Upside-down U"=1, "Missing"=0)) # 0.1, 1; 0.5, 5, 1, 10
 })
 
@@ -343,80 +343,82 @@ test_that("1D BMA forecast discrete-continuous model handles missing forecast me
   xseq <- seq(0.25, 0.75, by=0.25)
   mp <- 10
   fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=w, A_transform=NA, B_transform=NA, percent_clipping_threshold=0.9),
-                           max_power=mp, members=mem), class = c("prob_forecast", "fc_bma"))
+                           max_power=mp, members=mem, bma_distribution="beta"), class = c("prob_forecast", "fc_bma"))
 
-  with_mock(get_alpha_betas = function(...) return(list(PoC=PoC, alphas=mem/mp, betas=mem)),
-            dbeta_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
-            pbeta_subfunction = function(a, b, poc, w, xseq, i.thresh) return((1-poc)*w*xseq*(a)),
+  with_mock(get_shape_params = function(...) return(list(PoC=PoC, param1s=mem/mp, param2s=mem)),
+            pdf_subfunction = function(a, b, poc, w, xseq, ...) return((1-poc)*w*xseq*(a)),
+            cdf_subfunction = function(a, b, poc, w, xseq, i.thresh, ...) return((1-poc)*w*xseq*(a)),
             out <- get_discrete_continuous_model(fake_x, xseq=xseq)) #e.g., (0.25, 0.5, 0.75)*0.5 * (1-0.1)
   expect_equal(out$members$PoC, PoC)
   expect_equal(out$PoC, 0.05)
-  expect_equal(out$members$dbeta, matrix(c(0.5*xseq*0.1*(1)/mp, 0.5*xseq*0.5*(1-0.1)/mp, NA*xseq), ncol=3))
+  expect_equal(out$members$pdf, matrix(c(0.5*xseq*0.1*(1)/mp, 0.5*xseq*0.5*(1-0.1)/mp, NA*xseq), ncol=3))
   expect_equal(out$geometries, list("U type"=0, "Reverse J"=2, "J-type"=0, "Upside-down U"=0, "Missing"=1)) # 0.1, 1; 0.5, 5; NA, NA
 })
 
-test_that("pbeta subfunction calculation handles minimum threshold resolution", {
+test_that("cdf subfunction calculation handles minimum threshold resolution", {
   with_mock(pbeta=function(xseq, a, b) return(xseq),
-            expect_equal(pbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10), c(seq(0, 0.6, length.out = 10), 1)/2))
+            expect_equal(cdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 10), 1)/2))
 })
 
-test_that("pbeta subfunction calculation handles larger threshold resolution", {
+test_that("cdf subfunction calculation handles larger threshold resolution", {
   with_mock(pbeta=function(xseq, a, b) return(xseq),
-            expect_equal(pbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9), c(seq(0, 0.6, length.out = 9), 0.8, 1)/2))
+            expect_equal(cdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 9), 0.8, 1)/2))
 })
 
-test_that("dbeta subfunction calculation handles minimum threshold resolution", {
+test_that("pdf subfunction calculation handles minimum threshold resolution", {
   with_mock(dbeta=function(xseq, a, b) return(xseq),
             pbeta=function(x, a, b) return(x),
-            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=F), c(seq(0, 0.6, length.out = 10), 0.4/0.1)/2))
+            expect_equal(pdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=F, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 10), 0.4/0.1)/2))
 })
 
-test_that("pbeta subfunction calculation handles larger threshold resolution", {
+test_that("cdf subfunction calculation handles larger threshold resolution", {
   with_mock(dbeta=function(xseq, a, b) return(xseq),
             pbeta=function(x, a, b) return(x),
-            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9, discrete=F), c(seq(0, 0.6, length.out = 9), 0.4/0.2, 0.4/0.2)/2))
+            expect_equal(pdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9, discrete=F, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 9), 0.4/0.2, 0.4/0.2)/2))
 })
 
-test_that("dbeta subfunction calculation handles discrete option", {
+test_that("pdf subfunction calculation handles discrete option", {
   with_mock(dbeta=function(xseq, a, b) return(xseq),
             pbeta=function(xseq, a, b) return(max(xseq)),
-            expect_equal(dbeta_subfunction(a=NA, b=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=T), seq(0, 0.6, length.out = 11)/2))
+            expect_equal(pdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=T, bma_distribution="beta", max_power=NA), seq(0, 0.6, length.out = 11)/2))
 })
 
-test_that("get_alpha_betas normalization and calculation is correct", {
+test_that("get_shape_params normalization and calculation is correct", {
   PoC <- c(0, 0.1, 0.5)
   mem <- c(1, 5, 11) # Last should be truncated
   mp <- 10
   fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=NA, w=NA, A_transform=NA, B_transform=NA),
-                           max_power=mp, members=mem), class = c("prob_forecast", "fc_bma"))
+                           max_power=mp, members=mem, bma_distribution="beta"), class = c("prob_forecast", "fc_bma"))
 
   with_mock(get_poc = function(x, A, ...) return(A),
             get_rho = function(x, ...) return(x),
+            get_sigma = function(...) return(NA),
             get_gamma = function(...) return(2), # gamma is over minimum gamma
-            out <- get_alpha_betas(fake_x))
+            out <- get_shape_params(fake_x))
   expect_equal(out$PoC, PoC)
-  expect_equal(out$alphas, c(0.1, 0.5, 1)*2)
-  expect_equal(out$betas, 2*(1-c(0.1, 0.5, 1)))
+  expect_equal(out$param1s, c(0.1, 0.5, 1)*2)
+  expect_equal(out$param2s, 2*(1-c(0.1, 0.5, 1)))
 })
 
-test_that("get_alpha_betas truncates gammas to avoid U distributions and handles NAs", {
+test_that("get_shape_params truncates gammas to avoid U distributions and handles NAs", {
   mp <- 1
   rho <- c(0.25, 0.75, NA)
   fake_x <- structure(list(model=list(A0=NA, A1=NA, A2=NA, B0=rho, B1=NA, C0=NA, w=NA, A_transform=NA, B_transform=NA),
-                           max_power=mp, members=rho), class = c("prob_forecast", "fc_bma"))
+                           max_power=mp, members=rho, bma_distribution="beta"), class = c("prob_forecast", "fc_bma"))
   with_mock(get_poc = function(...) return(NA),
             get_rho = function(x, B0, ...) return(B0),
-            get_gamma = function(x, ...) return(ifelse(is.na(x), NA, 0.17)), # Variance in grey region based on variance of 0.16
-            out <- get_alpha_betas(fake_x))
-  expect_equal(out$alphas, rho/0.75) # gamma pegged to 1/rho or 1/(1-rho)
-  expect_equal(out$betas, (1-rho)/0.75)
+            get_sigma = function(...) return(NA),
+            get_gamma = function(mu, sigma) return(ifelse(is.na(mu), NA, 0.17)), # Variance in grey region based on variance of 0.16
+            out <- get_shape_params(fake_x))
+  expect_equal(out$param1s, rho/0.75) # gamma pegged to 1/rho or 1/(1-rho)
+  expect_equal(out$param2s, (1-rho)/0.75)
 })
 
 
 test_that('1d bma forecast quantile calculation is correct', {
-  fake_forecast <- structure(list(max_power=10), class = c("prob_forecast", "fc_bma"))
+  fake_forecast <- structure(list(max_power=10, bma_distribution="beta"), class = c("prob_forecast", "fc_bma"))
   q <- c(0.2, 0.4, 0.6, 0.8)
-  with_mock(get_discrete_continuous_model=function(...) return(list(xseq=c(0, 3, 10), pbeta=c(0, 0.3, 1), dbeta=c(10, 13, 20), PoC=0.2)),
+  with_mock(get_discrete_continuous_model=function(...) return(list(xseq=c(0, 3, 10), cdf=c(0, 0.3, 1), pdf=c(10, 13, 20), PoC=0.2)),
             OUT <- calc_quantiles(fake_forecast, quantiles=q))
   expect_equal(OUT$q, q)
   expect_equal(OUT$x, c(2, 4, 6, 8))
@@ -424,9 +426,10 @@ test_that('1d bma forecast quantile calculation is correct', {
 })
 
 test_that("beta distribution geometry code lookup is correct", {
-  expect_equal(get_beta_distribution_geometry_code(0.5, NA), 0)
-  expect_equal(get_beta_distribution_geometry_code(0.5, 0.5), 1)
-  expect_equal(get_beta_distribution_geometry_code(0.5, 1), 2)
-  expect_equal(get_beta_distribution_geometry_code(1, 0.5), 3)
-  expect_equal(get_beta_distribution_geometry_code(1, 1), 4)
+  expect_equal(get_beta_distribution_geometry_code("truncnorm", 0.5, 0.5), 0)
+  expect_equal(get_beta_distribution_geometry_code("beta", 0.5, NA), 0)
+  expect_equal(get_beta_distribution_geometry_code("beta", 0.5, 0.5), 1)
+  expect_equal(get_beta_distribution_geometry_code("beta", 0.5, 1), 2)
+  expect_equal(get_beta_distribution_geometry_code("beta", 1, 0.5), 3)
+  expect_equal(get_beta_distribution_geometry_code("beta", 1, 1), 4)
 })

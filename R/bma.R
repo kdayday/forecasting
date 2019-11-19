@@ -4,6 +4,7 @@
 # Data should be pre-processed and normalized to [0,1] so that clipped values are exactly 1
 #' @param tel Vector of training telemetry data on [0,1] OR a matrix [time x member] of training telemetry data tailored to each member
 #' @param ens Matrix of training ensemble member data [time x member] on [0,1]
+#' @param bma_distribution Either "beta" or "truncnorm" to select type of distribution for member kernel dressing
 #' @param lr_formula Formula in terms of x,y for logistic regression model, defaults to "y ~ x". Requires a negative x intercept to model PoC < 0.5.
 #' @param A_transform A function for transforming forecast data before logistic regression to get a's (optional)
 #' @param lm_formula Formula in terms of x,y for linear regression model, defaults to "y ~ x + 0"
@@ -12,11 +13,13 @@
 #' @param tol A tolerance for determining if normalized values all are <=1 (defaults to 0.001)
 #' @param ... Optional arguments to pass to EM algorithm
 #' @return A list for a discrete-continuous mixture model with beta distribution
-beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, percent_clipping_threshold=0.995, tol=1e-3, ...) {
+bma_ens_models <- function(tel, ens, bma_distribution="beta", max_power=NA, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, percent_clipping_threshold=0.995, tol=1e-3, ...) {
   if (any(tel < 0, na.rm=T) | any(tel - 1>tol, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
   if (any(ens < 0, na.rm=T) | any(ens - 1>tol , na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
   if (percent_clipping_threshold > 1) warning('Percent clipping threshold is > 1. Discrete component will be irrelevant in discrete-continuous model.')
   if (!(length(tel) == dim(ens)[1] | length(tel) == prod(dim(ens)))) stop("Must have same number of telemetry and forecast time-points.")
+  if (!(bma_distribution %in% c("beta", "truncnorm"))) stop("bma_distribution not recognized. Must be 'beta' or 'truncnorm'.")
+  if (bma_distribution=="truncnorm" & is.na(max_power)) stop("Plant max_power must be provided to use a truncnorm distribution.")
 
   # If needed, replicate telemetry out from vector to matrix
   if (length(tel) == dim(ens)[1]) tel <- replicate(dim(ens)[2], tel)
@@ -50,10 +53,12 @@ beta1_ens_models <- function(tel, ens, lr_formula= y ~ x, A_transform=NA, lm_for
   array_dims <- c(ntime, 1, nens)
   tmp <- em(FCST=array(ens, dim=array_dims), OBS=array(tel, dim=array_dims), A0=array(rep(A0, each=ntime), dim=array_dims),
             A1=array(rep(A1, each=ntime), dim=array_dims), A2=0, B0=array(rep(B0, each=ntime), dim=array_dims),
-            B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform, percent_clipping_threshold=percent_clipping_threshold, ...)
+            B1=array(rep(B1, each=ntime), dim=array_dims), A_transform=A_transform, B_transform=B_transform,
+            percent_clipping_threshold=percent_clipping_threshold, bma_distribution=bma_distribution, max_power=max_power, ...)
 
   return(list(A0=A0, A1=A1, A2=0, B0=B0, B1=B1, C0=tmp$C0, w=tmp$w, fit_statistics=fit_statistics, log_lik=tmp$log_lik,
-              A_transform=A_transform, B_transform=B_transform, em_count=tmp$count, em_error=tmp$max_error, percent_clipping_threshold=percent_clipping_threshold))
+              A_transform=A_transform, B_transform=B_transform, em_count=tmp$count, em_error=tmp$max_error,
+              percent_clipping_threshold=percent_clipping_threshold, bma_distribution=bma_distribution))
 }
 
 
@@ -114,7 +119,8 @@ get_lm <- function(fc, tel, form, B_transform, percent_clipping_threshold){
 }
 
 # Expectation-maximization function, modified from code courtesy of Will Kleiber
-em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, percent_clipping_threshold, C0=0.06, eps=1e-005, maxiter=1000, CM2.iter=50, start.w=NULL)
+em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, percent_clipping_threshold, bma_distribution, max_power,
+               C0=0.06, eps=1e-005, maxiter=1000, CM2.iter=50, start.w=NULL)
 
     # MODEL for one forecast : y_s is solar power, logit P(y_s = 1 | f) = a0 + a1 f
     #                          solar power level, conditional on it being less than rated power (i.e., 1) is beta distributed
@@ -129,6 +135,8 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, percent_
 #              (number of ensemble members) of estimates of XN (usually posterior mean for A0,1,2 and
 #              least squares from regression for B0,1)
 #               Can set A2's to 0's to ignore the indicator function aspect
+#  bma_distribution "beta" or "truncnorm" to select distribution for kernel dressing
+#  max_power Plant's AC power rating for truncnorm distributrion
 
 #  C0 starting estimate of C0, which is assumed constant across sites and members (equal variances among ensemble member)
 #  eps     stopping criterion
@@ -150,14 +158,14 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, percent_
   # main EM algorithm
   while((max(abs(error)) > eps) && (count < maxiter))
   {
-    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_clipping_threshold, count, CM2.iter)
+    new_params <- em_subfunction(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_clipping_threshold, bma_distribution, max_power, count, CM2.iter)
     C0 <- new_params$C0
     w <- new_params$w
     error <- new_params$error
     count <- count + 1
   }
 
-  lik <- get_log_lik(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold)
+  lik <- get_log_lik(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold, bma_distribution, max_power)
   return(list(log_lik=lik, w=w, C0=C0, count=count, max_error=max(abs(error))))
 }
 
@@ -175,9 +183,9 @@ get_initial_weights <- function(start.w, avail) {
   return(w)
 }
 
-em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_clipping_threshold, count, CM2.iter) {
+em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_clipping_threshold, bma_distribution, max_power, count, CM2.iter) {
   ## E step
-  z <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold)$z
+  z <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold, bma_distribution, max_power)$z
 
   ## CM-1 step
   # new weights and variance deflation
@@ -190,7 +198,7 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_c
   # Using the new w estimate, re-optimize C0
   if (count%%CM2.iter == 0) {
     opt <- optimize(get_log_lik, interval=c(0, 0.25), w=w.new, OBS=OBS, FCST=FCST, B0=B0, B1=B1, PoC=PoC, B_transform=B_transform,
-                    percent_clipping_threshold=percent_clipping_threshold, maximum = T)
+                    percent_clipping_threshold=percent_clipping_threshold, bma_distribution=bma_distribution, max_power=max_power, maximum = T)
     C0.new <- opt$maximum
   } else C0.new <- C0
 
@@ -202,15 +210,21 @@ em_subfunction <- function(FCST, OBS, PoC, B0, B1, C0, w, B_transform, percent_c
 }
 
 ## E step subfunction
-e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold) {
+e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold, bma_distribution, max_power) {
   # Re-calculate beta density estimates based on current estimate for C0
-  rhos <- array(mapply(get_rho, FCST, B0, B1, MoreArgs = list(B_transform=B_transform)), dim(FCST))
-  gammas <- array(mapply(get_gamma, rhos, MoreArgs = list(C0=C0)), dim(FCST))
+  param1s <- array(mapply(get_rho, FCST, B0, B1, MoreArgs = list(B_transform=B_transform)), dim(FCST)) # Distribution means
+  sigmas <- array(mapply(get_sigma, param1s, MoreArgs = list(C0=C0)), dim(FCST))
+  if (bma_distribution=="beta") {
+    param2s <- array(mapply(get_gamma, param1s, sigmas), dim(FCST))
+  } else if (bma_distribution=="truncnorm") {
+    param2s <- sigmas
+  } else stop(paste("bma_distribution not recognized. Given", bma_distribution))
 
   # z is an array with the first entry being day, second entry site, third entry forecast
   # ntime = dim(FCST)[1], nsite = dim(FCST)[2]
   # Linear indexing, OBS already expanded across members, w explicitly expanded
-  z_num <-  array(mapply(get_weighted_probability, OBS, PoC, gammas, rhos, rep(w, each=dim(FCST)[1]*dim(FCST)[2]), MoreArgs = list(percent_clipping_threshold=percent_clipping_threshold)), dim(FCST))
+  z_num <-  array(mapply(get_weighted_probability, OBS, PoC, param1s, param2s, rep(w, each=dim(FCST)[1]*dim(FCST)[2]),
+                         MoreArgs = list(percent_clipping_threshold=percent_clipping_threshold, bma_distribution=bma_distribution, max_power=max_power)), dim(FCST))
 
   # sumz is weighted sum of density functions across the members. Rows are single training days, columns are sites
   sumz <- apply(z_num, MARGIN=c(1,2), FUN=function(z) ifelse(all(is.na(z)), NA, sum(z, na.rm=T))) # If all members are missing, return NA; else sum the others.
@@ -219,8 +233,8 @@ e_step <- function(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_
 }
 
 # Define log likelihood subfunction for maximization step
-get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold) {
-  sumz <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold)$sumz
+get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold, bma_distribution, max_power) {
+  sumz <- e_step(w, C0, OBS, FCST, B0, B1, PoC, B_transform, percent_clipping_threshold, bma_distribution, max_power)$sumz
   return(sum(log(sumz), na.rm=T))
 }
 
@@ -228,14 +242,26 @@ get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clip
 # Returns NA for missing values and observations exactly at 0
 # Defines clipping with a percentage threshold, lambda
 # density is (PoC/(1-lambda))*1[obs>=lambda] + ((1-PoC)/CDF(lambda))*Beta(obs,a,b)*1[obs < lambda]
-get_weighted_probability <- function(OBS, PoC, gamma, rho, w, percent_clipping_threshold) {
+#' @param OBS A single observation
+#' @param PoC Probability of clipping
+#' @param param1 Distribution parameter 1: mean for both beta and truncnorm distributions
+#' @param param2 Distribution parameter 2: gamma for a beta; sd for a truncnorm distribution
+#' @param w this member's weight
+#' @param percent_clipping_threshold [0,..1]
+#' @param bma_distribution "beta" or "truncnorm"
+get_weighted_probability <- function(OBS, PoC, param1, param2, w, percent_clipping_threshold, bma_distribution, max_power) {
   if (is.na(OBS) | OBS==0) {return(NA)}
   if (OBS >= percent_clipping_threshold) return(w*PoC/(1-percent_clipping_threshold))
   else {
-    alpha <- rho * gamma
-    beta <- gamma * (1-rho)
-    db <- stats::dbeta(OBS, alpha, beta)
-    threshold_CD <- stats::pbeta(percent_clipping_threshold, alpha, beta) # Scaling factor: cumulative density at the threshold
+    if (bma_distribution=="beta") {
+      alpha <- param1 * param2
+      beta <- param2 * (1-param1)
+      db <- stats::dbeta(OBS, alpha, beta)
+      threshold_CD <- stats::pbeta(percent_clipping_threshold, alpha, beta) # Scaling factor: cumulative density at the threshold
+    } else if (bma_distribution=="truncnorm") {
+      db <- truncnorm::dtruncnorm(OBS, a=0, b=max_power, mean=param1, sd=param2)
+      threshold_CD <- truncnorm::ptruncnorm(percent_clipping_threshold, a=0, b=max_power, mean=param1, sd=param2) # Scaling factor: cumulative density at the threshold
+    } else stop(paste("bma_distribution not recognized. Given", bma_distribution))
     return((w*(1-PoC)/threshold_CD)*db)
   }
 }
@@ -270,10 +296,10 @@ get_rho <- function(FCST, B0, B1, B_transform=NA) {
   return(mu)
 }
 
-# Get gamma parameter of beta distribution for single instance
-#' @param mu beta mean value for this forecast (AKA rho)
+# Get sigma parameter of distribution for single instance
+#' @param mu mean value for this forecast (AKA rho)
 #' @param C0 height parameter of quadratic model of variance
-get_gamma <- function(mu, C0) {
+get_sigma <- function(mu, C0) {
   # Return NA if mu is missing or on the boundary
   if (is.na(mu) | mu==0) {return(NA)}
 
@@ -283,12 +309,18 @@ get_gamma <- function(mu, C0) {
   # Truncate at maximum theoretical value if necessary
   if (sigma >= sqrt(mu*(1-mu)))
     sigma <- sqrt(mu*(1-mu))-1e-6 #smidge less than the limit
-
-  gamma <- mu*(1-mu)/sigma^2 - 1
-
-  return(gamma)
+  return(sigma)
 }
 
+# Get gamma parameter of beta distribution for single instance
+#' @param mu beta mean value for this forecast (AKA rho)
+#' @param sigmas standard deviation
+get_gamma <- function(mu, sigma) {
+  # Return NA if mu is missing or on the boundary
+  if (is.na(mu) | mu==0) {return(NA)}
+
+  return(mu*(1-mu)/sigma^2 - 1)
+}
 
 # Get density of beta distribution with gamma, rho parameterization at given value
 #' @param x Value or vector of values [0,1]
