@@ -305,6 +305,10 @@ test_that("1d KDE CVAR estimate is correct", {
   expect_equal(OUT, list(cvar=list(low=15, high=95), var=list(low=25, high=85)))
 })
 
+test_that("fc_bma throws errors", {
+  expect_error(fc_bma(matrix(1:2, ncol=2), "location", time=NA, model=NA, max_power=10, bma_distribution="norm"), "bma_distribution*")
+})
+
 test_that("BMA QC re-weights model when members are missing", {
   expect_error(qc_bma_input(c(1, NA) , NA), "Input data*")
 
@@ -360,6 +364,12 @@ test_that("cdf subfunction calculation handles minimum threshold resolution", {
             expect_equal(cdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 10), 1)/2))
 })
 
+test_that("cdf subfunction calculation handles minimum threshold resolution and truncnorm distribution", {
+  with_mock(ptruncnorm=function(xseq, a, b, mean, sd) return(xseq*mean/sd/b + a),
+            expect_equal(cdf_subfunction(param1=60, param2=20, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, bma_distribution="truncnorm", max_power=10),
+                         c(seq(0, 0.6, length.out = 10), 1)/2))
+})
+
 test_that("cdf subfunction calculation handles larger threshold resolution", {
   with_mock(pbeta=function(xseq, a, b) return(xseq),
             expect_equal(cdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 9), 0.8, 1)/2))
@@ -368,10 +378,11 @@ test_that("cdf subfunction calculation handles larger threshold resolution", {
 test_that("pdf subfunction calculation handles minimum threshold resolution", {
   with_mock(dbeta=function(xseq, a, b) return(xseq),
             pbeta=function(x, a, b) return(x),
-            expect_equal(pdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=F, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 10), 0.4/0.1)/2))
+            expect_equal(pdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=F, bma_distribution="beta", max_power=NA),
+                         c(seq(0, 0.6, length.out = 10), 0.4/0.1)/2))
 })
 
-test_that("cdf subfunction calculation handles larger threshold resolution", {
+test_that("pdf subfunction calculation handles larger threshold resolution", {
   with_mock(dbeta=function(xseq, a, b) return(xseq),
             pbeta=function(x, a, b) return(x),
             expect_equal(pdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=9, discrete=F, bma_distribution="beta", max_power=NA), c(seq(0, 0.6, length.out = 9), 0.4/0.2, 0.4/0.2)/2))
@@ -383,7 +394,20 @@ test_that("pdf subfunction calculation handles discrete option", {
             expect_equal(pdf_subfunction(param1=NA, param2=NA, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=T, bma_distribution="beta", max_power=NA), seq(0, 0.6, length.out = 11)/2))
 })
 
-test_that("get_shape_params normalization and calculation is correct", {
+test_that("pdf subfunction calculation handles minimum threshold resolution with truncnorm distribution", {
+  with_mock(dtruncnorm=function(xseq, a, b, mean, sd) return(xseq*mean/b + a),
+            ptruncnorm=function(x, a, b, mean, sd) return(x*sd/b + a),
+            expect_equal(pdf_subfunction(param1=10, param2=20, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=F, bma_distribution="truncnorm", max_power=10),
+                         c(0.6*seq(0, 0.5, length.out=10), 0.4/0.1)/2))
+})
+
+test_that("pdf subfunction calculation handles discrete option with truncnorm distribution", {
+  with_mock(dtruncnorm=function(xseq, a, b, mean, sd) return(xseq*mean/sd/b + a),
+            expect_equal(pdf_subfunction(param1=600, param2=20, poc=0.4, w=0.5, xseq=seq(0, 1, by=0.1), i.thresh=10, discrete=T, bma_distribution="truncnorm", max_power=10),
+                         seq(0, 0.6, length.out = 11)/2*3))
+})
+
+test_that("get_shape_params normalization and calculation is correct for betas", {
   PoC <- c(0, 0.1, 0.5)
   mem <- c(1, 5, 11) # Last should be truncated
   mp <- 10
@@ -412,6 +436,22 @@ test_that("get_shape_params truncates gammas to avoid U distributions and handle
             out <- get_shape_params(fake_x))
   expect_equal(out$param1s, rho/0.75) # gamma pegged to 1/rho or 1/(1-rho)
   expect_equal(out$param2s, (1-rho)/0.75)
+})
+
+test_that("get_shape_params normalization and calculation is correct for truncnorm", {
+  PoC <- c(0, 0.1, 0.5)
+  mem <- c(1, 5, 11) # Last should be truncated
+  mp <- 10
+  fake_x <- structure(list(model=list(A0=PoC, A1=NA, A2=NA, B0=NA, B1=NA, C0=0.3, w=NA, A_transform=NA, B_transform=NA),
+                           max_power=mp, members=mem, bma_distribution="truncnorm"), class = c("prob_forecast", "fc_bma"))
+
+  with_mock(get_poc = function(x, A, ...) return(A),
+            get_rho = function(x, ...) return(x),
+            get_sigma = function(rho, C0) return(C0),
+            out <- get_shape_params(fake_x))
+  expect_equal(out$PoC, PoC)
+  expect_equal(out$param1s, c(0.1, 0.5, 1))
+  expect_equal(out$param2s, c(0.3, 0.3, 0.3))
 })
 
 

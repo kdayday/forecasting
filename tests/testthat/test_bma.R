@@ -2,6 +2,7 @@ context("Test forecasting context")
 
 library(forecasting)
 library(logistf)
+library(truncnorm)
 
 test_that("Probability of clipping calculation is correct.", {
   expect_equal(get_poc(FCST=NA, A0=0.1, A1=1.2, A2=1), NA)
@@ -26,6 +27,13 @@ test_that("get_weighted_probability handles missing members", {
 
 test_that("get_weighted_probability returns missing for observataions at 0", {
   expect_true(is.na(get_weighted_probability(OBS=0, PoC=0.4, param1=0.4, param2=0.01, w=0.5, percent_clipping_threshold=0.99, bma_distribution="beta", max_power=NA)))
+})
+
+test_that("get_weighted_probability is correct for truncnorm distribution", {
+  with_mock(dtruncnorm =function(obs, a, b, mean, sd) return((mean+sd)/b), # 0.9
+            ptruncnorm =function(obs, a, b, mean, sd) return(0.8),
+            expect_equal(get_weighted_probability(OBS=0.989, PoC=0.4, param1=7, param2=2, w=0.5, percent_clipping_threshold=0.99, bma_distribution="truncnorm", max_power=10),
+                         0.3375)) # 0.5 * 0.6 * 0.9/0.8 =0.3375
 })
 
 test_that("e_step array handling is correct.", {
@@ -71,6 +79,7 @@ test_that("beta1_ens_models throws errors", {
   expect_error(bma_ens_models(tel=c(1, 1.01, NA), ens=matrix((1:9)/9, ncol=3)), "Telemetry*")
   expect_error(bma_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9), ncol=3)), "All forecasts*")
   expect_error(bma_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=1)), "Must*") # telemetry vector wrong length
+  expect_error(bma_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), bma_distribution = "truncnorm"), "Plant max_power*")
   # Does not check for correct order of dimensions
   expect_error(bma_ens_models(tel=matrix((1:6)/9, ncol=3), ens=matrix((1:9)/9, ncol=3)), "Must*") # telemetry matrix wrong size
   expect_warning(bma_ens_models(tel=c(1, 2, NA)/3, ens=matrix((1:9)/9, ncol=3), percent_clipping_threshold=1.1), "Percent*")

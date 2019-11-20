@@ -476,9 +476,9 @@ plot_pdf.fc_empirical <- function(x) {
 #' @param ... Additional parameters
 #' @return A probabilistic forecast object
 fc_bma <- function(data.input, location, time, model, max_power, bma_distribution, ...) {
+  if (!(bma_distribution %in% c("beta", "truncnorm"))) stop("bma_distribution not recognized. Must be 'beta' or 'truncnorm'.")
   # Sanity check inputs; skip if model is missing
   if (all(is.na(model))) return(NA)
-  if (!(bma_distribution %in% c("beta", "truncnorm"))) stop("bma_distribution not recognized. Must be 'beta' or 'truncnorm'.")
 
   # Use specific quality control to handle missing members and adjust model weights accordingly
   model <- qc_bma_input(data.input, model)
