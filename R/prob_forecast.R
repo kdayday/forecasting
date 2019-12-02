@@ -756,9 +756,12 @@ calc_quantiles.fc_emos <- function(x, model, quantiles=seq(0.001, 0.999, by=0.00
 #' Plot EMOS forecast
 plot_pdf.fc_emos <- function(x, actual=NA, ymax=NA, normalize=F) {
 
+  ymax <- ifelse(is.na(ymax), max(x$quantiles$d)*ifelse(normalize, x$max_power, 1)*1.1, ymax)
+
   g <- ggplot2::ggplot(data.frame(x=x$quantiles$x/ifelse(normalize, x$max_power, 1),
                                   y=x$quantiles$d*ifelse(normalize, x$max_power, 1)),
                        mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_line() +
     ggplot2::xlab(ifelse(normalize, "Normalized Power [MW]", "Power [MW]")) +
     ggplot2::ylab("Probability Density") +
     ggplot2::geom_point(data=data.frame(x=x$members/ifelse(normalize, x$max_power, 1), y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
