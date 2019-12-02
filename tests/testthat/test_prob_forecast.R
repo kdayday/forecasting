@@ -4,6 +4,7 @@ library(forecasting)
 library(rvinecopulib)
 library(stats)
 library(pracma)
+library(truncnorm)
 
 mock_samp <- function(x, ...) "A sample"
 mock_pd <- function(x,...) "A pd"
@@ -473,3 +474,23 @@ test_that("beta distribution geometry code lookup is correct", {
   expect_equal(get_beta_distribution_geometry_code("beta", 1, 0.5), 3)
   expect_equal(get_beta_distribution_geometry_code("beta", 1, 1), 4)
 })
+
+
+test_that('1d emos forecast quantile calculation is correct', {
+  fake_forecast <- structure(list(max_power=10, model=list(a=1, b=2:5, c=10, d=6), members=c(0.5, 0.1, 0.25, NA)),
+                             class = c("prob_forecast", "fc_emos"))
+  q <- c(0.2, 0.4, 0.6, 0.8)
+
+  with_mock(qtruncnorm = function(q, a, b, mean, sd) return(mean*q*b + a), # mean=1 + 2.3 = 3.3
+            var = function(z, na.rm) return(sum(z, na.rm=na.rm)),
+            dtruncnorm = function(x, a, b, mean, sd) return(sd*x), # sd = 0.85*6 + 10=15.1
+            OUT <- calc_quantiles(fake_forecast, quantiles=q))
+  expect_equal(OUT$q, q)
+  expect_equal(OUT$x, 3.3*q*10)
+  expect_equal(OUT$d, 15.1*OUT$x)
+})
+
+test_that('fc_emos forecast throws error', {
+  expect_error(fc_emos(data.input=1:4, location="TX", time=NA, model=list(b=1:3), max_power=10), "Mismatch*")
+})
+

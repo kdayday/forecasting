@@ -58,6 +58,7 @@ test_that("ts_forecast class lookup is correct", {
   expect_identical(get_forecast_class('Site', 'kde')$dim, '1')
   expect_identical(get_forecast_class('Site', 'binned')$class, fc_binned)
   expect_identical(get_forecast_class('Site', 'bma')$class, fc_bma)
+  expect_identical(get_forecast_class('Site', 'emos')$class, fc_emos)
   expect_identical(get_forecast_class('Site', 'empirical')$class, fc_empirical)
   expect_error(get_forecast_class('region', 'vine'), "Not implemented*")
   expect_error(get_forecast_class('T', 't'))

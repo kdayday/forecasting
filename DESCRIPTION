@@ -25,6 +25,7 @@ Imports:
     purrr,
     repr,
     rvinecopulib,
+    scoringRules,
     stats,
     truncnorm
 Suggests:

@@ -703,6 +703,73 @@ plot_pdf.fc_bma <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
 }
 
 
+# ---------------------------------------------------------------------------------------------
+
+#' Initialize a univariate probabilistic power forecast for a specific time point using ensemble model output statistics (EMOS)
+#'
+#' @param data.input A vector of ensemble members
+#' @param location A string
+#' @param time A lubridate time stamp
+#' @param model A pre-fit BMA model from bma_ens_models; list of a, b, c, d parameters
+#' @param max_power Maximum power for normalizing forecast to [0,1]
+#' @param ... Additional parameters
+#' @return A probabilistic forecast object
+fc_emos <- function(data.input, location, time, model, max_power,  ...) {
+  # Sanity check inputs; skip if model is missing
+  if (all(is.na(model))) return(NA)
+  if (length(data.input) != length(model$b)) stop("Mismatch between number of members and EMOS b parameters.")
+
+  # Initialize probabilistic forecast
+  dat <- list(location = location,
+              time = time,
+              d = 1,
+              model=model,
+              members=data.input,
+              max_power=max_power
+  )
+  x <- structure(dat, class = c("prob_forecast", "fc_emos"))
+
+  x$quantiles <- calc_quantiles(x)
+  return(x)
+}
+
+#' Check class
+is.fc_emos <- function(x) inherits(x, "fc_emos")
+
+
+#' Calculate forecast quantiles
+#' @param x fc_emos object
+#' @param quantiles Sequence of quantiles in (0,1)
+#' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+calc_quantiles.fc_emos <- function(x, model, quantiles=seq(0.001, 0.999, by=0.001)) {
+  error_check_calc_quantiles_input(quantiles)
+
+  mn <- x$model$a + sum(x$model$b*x$members, na.rm = T)
+  std_dev <- x$model$c + x$model$d*var(x$members, na.rm=T)
+
+  xseq <- truncnorm::qtruncnorm(quantiles, a=0, b=x$max_power, mean=mn, sd=std_dev)
+  d <- truncnorm::dtruncnorm(xseq, a=0, b=x$max_power, mean=mn, sd=std_dev)
+
+  return(list(x=xseq, q=quantiles, d=d))
+}
+
+#' Plot EMOS forecast
+plot_pdf.fc_emos <- function(x, actual=NA, ymax=NA, normalize=F) {
+
+  g <- ggplot2::ggplot(data.frame(x=x$quantiles$x/ifelse(normalize, x$max_power, 1),
+                                  y=x$quantiles$d*ifelse(normalize, x$max_power, 1)),
+                       mapping=ggplot2::aes(x=x, y=y)) +
+    ggplot2::xlab(ifelse(normalize, "Normalized Power [MW]", "Power [MW]")) +
+    ggplot2::ylab("Probability Density") +
+    ggplot2::geom_point(data=data.frame(x=x$members/ifelse(normalize, x$max_power, 1), y=ymax), col="black", fill="grey", alpha=0.5, shape=21, size=3)
+
+  if (!is.na(actual)) {
+    g <- g + ggplot2::geom_line(data=data.frame(x=c(actual/ifelse(normalize, x$max_power, 1), actual/ifelse(normalize, x$max_power, 1)),
+                                                y=c(0, ymax)), linetype="dashed")
+  }
+
+  plot(g)
+}
 
 # ---------------------------------------------------------------------------------------------
 
