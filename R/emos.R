@@ -8,19 +8,18 @@
 emos_model <- function(tel, ens, max_power, par_init=NA) {
   if (!(length(tel) == nrow(ens))) stop("Must have same number of telemetry and forecast time-points.")
 
+  valid <- !(is.na(tel) | apply(ens, MARGIN=1, FUN=function(x) any(is.na(x))))
   # Some defaults are referenced to fitMOStruncnorm function in ensembleMOS
+  if (sum(valid)==0) return(NA)
   if (all(is.na(par_init))) {
-    # Start off with a simple linear model
-    start_coefs <- unname(lm(tel~ens)$coef)
     # C, D, A, B
-    par_init <- list(a=start_coefs[1], b=start_coefs[-1], c=5, d=1)
+    par_init <- list(a=0, b=rep(1/ncol(ens), times=ncol(ens)), c=5, d=1)
   }
 
   # Square-root b, c, d parameters
-  par <- c(sqrt(par_init$c), sqrt(par_init$d), par_init$a, sqrt(abs(par_init$b)))
+  par <- c(sqrt(par_init$c), sqrt(par_init$d), par_init$a, sqrt(par_init$b))
 
-  lb <- c(0, 0, rep(-Inf, times=length(par)-2)) # Force variance parameters to be lower bounded at 0
-  opt <- optim(par, tnorm_crps_obj, obs=tel, ens=ens, max_power=max_power, method="L-BFGS-B", lower=lb, control=list(maxit=1e7))
+  opt <- optim(par, tnorm_crps_obj, obs=tel[valid], ens=matrix(ens[valid,], ncol=ncol(ens)), max_power=max_power, method="Nelder-Mead", control=list(maxit=1e7))
 
   # Re-square b, c, d parameters
   return(list(a=opt$par[3], b=opt$par[-(1:3)]^2, c=opt$par[1]^2, d=opt$par[2]^2))
