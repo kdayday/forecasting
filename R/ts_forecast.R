@@ -174,24 +174,50 @@ length.ts_forecast <- function(x) {
 #' @param x A ts_forecast object
 #' @param tel vector of telemetry (optional)
 #' @param window (optional) A vector of (start index, end index) to plot certain time window
-plot.ts_forecast <- function(x, tel=NA, window=NA, normalize.by=1) {
+#' @param normalize.by Plant power to normalize results. Defaults to 1
+#' @param xbreaks (optional) Determines width between x ticks, defaults to 4
+plot.ts_forecast <- function(x, tel=NA, window=NA, normalize.by=1, xbreaks=4, ylim=NULL, text.size =14,
+                             ylab=ggplot2::element_blank(), xlab=ggplot2::element_blank(), xticklab=T, yticklab=T) {
   indices <- get_index_window(x, window)
 
   probs <- x$forecasts[[min(which(sapply(x$forecasts, FUN=is.prob_forecast)))]]$quantiles$q
-  plotdata <- matrix(ncol=length(indices), nrow=length(probs))
+
+  plotdata <- matrix(ncol=length(probs), nrow=length(indices))
   for (i in seq_along(indices)) {
     if (is.prob_forecast(x$forecasts[[indices[i]]])) {
-      plotdata[,i] <- x$forecasts[[indices[i]]]$quantiles$x/normalize.by
-    } else plotdata[,i] <- 0
+      plotdata[i,] <- x$forecasts[[indices[i]]]$quantiles$x/normalize.by
+    } else plotdata[i,] <- 0
   }
-  graphics::plot(NULL, xlim=c(0, length(indices)*x$time_step), ylim=c(0, max(plotdata)), xlab="Time [Hrs]", ylab=ifelse(normalize.by==1, "Power [MW]", "Noramlized Power"))
-  fanplot::fan(plotdata, data.type='values', probs=probs, fan.col=colorspace::sequential_hcl,
-               rlab=NULL, start=x$time_step, frequency=1/x$time_step)
+  colnames(plotdata) <- probs
+
+  df <- tibble::rowid_to_column(data.frame(plotdata, check.names=F), var="x")
+  df <- tidyr::gather(df, key="q", value="y", -x, convert=T)
+  g <- ggplot2::ggplot(df,  ggplot2::aes(x=x,y=y,quantile=q)) + ggfan::geom_fan() +
+    ggplot2::theme_bw() + ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    ggplot2::theme(text=ggplot2::element_text(size=text.size),
+                   panel.background = ggplot2::element_rect(fill = "transparent",colour = NA),
+                   plot.background = ggplot2::element_rect(fill = "transparent",colour = NA))
+
+  if (xticklab) {
+    g <- g + ggplot2::scale_x_continuous(expand=c(0,0), breaks=seq(from=0, to=length(indices), by=xbreaks*x$time_step), labels=seq(from=0, to=length(indices)/x$time_step, by=xbreaks))
+  } else {
+    g <- g + ggplot2::scale_x_continuous(expand=c(0,0), breaks=seq(from=0, to=length(indices), by=xbreaks*x$time_step), labels=rep("", times=length(seq(from=0, to=length(indices)/x$time_step, by=xbreaks))))
+  }
+
+  if (!is.null(ylim)) {g <- g + ggplot2::coord_cartesian(ylim=ylim)}
+  if (!yticklab) {
+    g <- g + ggplot2::scale_y_continuous(labels=rep("", times=length(ggplot2::ggplot_build(g)$layout$panel_params[[1]]$y.major_source)))
+  }
+
   if (any(!is.na(tel))) {
     actuals_time_step <- x$time_step*length(x)/length(tel)
-    graphics::lines(seq(from=actuals_time_step, length.out=length(indices)/actuals_time_step, by=actuals_time_step),
-                    tel[((indices[1]-1)*actuals_time_step+1):(indices[length(indices)]*actuals_time_step)]/normalize.by, col='chocolate3', lwd=2)
+    g <- g + ggplot2::geom_line(mapping=ggplot2::aes(x=x, y=y), # size=1.2,
+                                data=data.frame(x=seq(from=actuals_time_step, length.out=length(indices)/actuals_time_step, by=actuals_time_step),
+                                                y=tel[((indices[1]-1)*actuals_time_step+1):(indices[length(indices)]*actuals_time_step)]/normalize.by),
+                                col="chocolate3", inherit.aes = F)
   }
+  return(g)
 }
 
 #' Export a csv file of [time x quantiles]
