@@ -2,20 +2,13 @@
 % Please edit documentation in R/prob_forecast.R
 \name{calc_quantiles}
 \alias{calc_quantiles}
-\title{Calculate forecast quantiles}
+\title{Register generic quantiles function}
 \usage{
-calc_quantiles(x, samples, quantile_density = 0.01)
+calc_quantiles(x, ...)
 }
 \arguments{
-\item{x}{A probabilistic forecast}
-
-\item{samples}{A column matrix of summed samples}
-
-\item{quantile_density}{Numeric in (0,1), i.e., 0.1 to calculate quantiles at every 10%}
-}
-\value{
-Estimated quantiles
+\item{x}{A prob_forecast object}
 }
 \description{
-Calculate forecast quantiles
+Register generic quantiles function
 }

@@ -4,7 +4,7 @@
 \alias{check_sunup}
 \title{Check GHI/power matrix for any positive numbers}
 \usage{
-check_sunup(x)
+check_sunup(x, sun_up_threshold = 0.5)
 }
 \arguments{
 \item{x}{A matrix}

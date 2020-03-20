@@ -1,10 +1,12 @@
-#' Fit EMOS coefficients a, b_k, c, d for truncated normal
-#' b_k, c, and d are parameterized as squares to control non-negativity of regression and scale parameters, like the "square" coefRule and varRule in the ensembleMOS package.
+#' Fit EMOS coefficients a, b_k, c, d for truncated normal b_k, c, and d are
+#' parameterized as squares to control non-negativity of regression and scale
+#' parameters, like the "square" coefRule and varRule in the ensembleMOS
+#' package.
 #' @param tel Vector of training telemetry data
 #' @param ens Matrix of training ensemble member data [time x member]
 #' @param par_init Initial parameter values as a list with a, b, c, d
 #' @param max_power site AC rating, for upper limit of truncated normal
-#'
+#' @export
 emos_model <- function(tel, ens, max_power, par_init=NA) {
   if (!(length(tel) == nrow(ens))) stop("Must have same number of telemetry and forecast time-points.")
 
@@ -36,7 +38,8 @@ emos_model <- function(tel, ens, max_power, par_init=NA) {
 #' Subfunction to get average crps over the training period
 #' @param par a vector of parameters to optimize over: c, d, a, b1, ... bn
 #' @param obs a vector of observations of length m
-#' @param ens a [time x member] (i.e., [m x n]) matrix of the ensemble forecasts for each observation
+#' @param ens a [time x member] (i.e., [m x n]) matrix of the ensemble forecasts
+#'   for each observation
 #' @param max_power Site AC power, for upper limit of truncated normal
 tnorm_crps_obj <- function(par, obs, ens, max_power) {
   # Re-square parameters

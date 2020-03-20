@@ -5,11 +5,12 @@
 \title{Calculate a time series list of power forecasts.}
 \usage{
 calc_forecasts(x, sun_up, start_time, time_step, scale, location, method,
-  n, epsilon)
+  MoreTSArgs = NA, ...)
 }
 \arguments{
-\item{x}{A list of training data the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site')
-or a [ntrain x nsites] matrix for scale=='region' or 'total'}
+\item{x}{A list of training data the length of the time-series. Each element
+should be [ntrain x 1] matrix of training data (for scale=='site') or a
+[ntrain x nsites] matrix for scale=='region' or 'total'}
 
 \item{sun_up}{Logical vector the length of the time-series}
 
@@ -23,9 +24,11 @@ or a [ntrain x nsites] matrix for scale=='region' or 'total'}
 
 \item{method}{One of 'gaussian', 'empirical', 'vine'}
 
-\item{n}{An integer: Number of samples to take}
+\item{MoreTSArgs}{An optional dictionary of time-series arguments to the
+forecast calculation}
 
-\item{epsilon}{Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)}
+\item{...}{optional arguments to the prob_forecast, including marginal
+estimator arguments}
 }
 \value{
 A list of forecasts. Forecast is NA for times when sun is down.

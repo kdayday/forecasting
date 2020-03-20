@@ -2,14 +2,13 @@
 % Please edit documentation in R/prob_forecast.R
 \name{plot.prob_forecast}
 \alias{plot.prob_forecast}
-\title{Plot probabilistic forecast's estimated pdf (with kde)
-Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
-from the kde results.}
+\title{Plot probabilistic forecast's quantiles}
 \usage{
-\method{plot}{prob_forecast}(x, ...)
+\method{plot}{prob_forecast}(x)
+}
+\arguments{
+\item{x}{A prob_forecast object}
 }
 \description{
-Plot probabilistic forecast's estimated pdf (with kde)
-Note that CVaR and VaR, while represented on the graph, are calculated directly from sampled data rather than estimated
-from the kde results.
+Plot probabilistic forecast's quantiles
 }

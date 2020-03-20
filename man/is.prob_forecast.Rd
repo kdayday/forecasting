@@ -6,6 +6,9 @@
 \usage{
 is.prob_forecast(x)
 }
+\arguments{
+\item{x}{A prob_forecast object}
+}
 \description{
 Check probabilistic forecast class
 }

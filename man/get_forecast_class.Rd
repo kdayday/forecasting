@@ -9,7 +9,8 @@ get_forecast_class(scale, method)
 \arguments{
 \item{scale}{One of 'site', 'region', 'total'}
 
-\item{method}{One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')}
+\item{method}{One of 'binned' if scale is 'site', else one of gaussian',
+'empirical', 'vine'}
 }
 \value{
 A function to initialize a forecast of the desired type

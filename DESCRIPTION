@@ -1,15 +1,18 @@
 Package: forecasting
 Type: Package
 Title: Probabilistic Solar Forecsting
-Version: 0.1.0
+Version: 1.0.0
 Author: person("Kate", "Doubleday", email = "kate.doubleday@nrel.gov",
                   role = c("aut", "cre"))
 Maintainer: Kate Doubleday <kate.doubleday@nrel.gov>                
-Description: Generate and evaluate probabilistic solar forecasts using 
-    vine, Gaussian, and empirical copulas.
-Depends: 
-    locfit
-License: What license is it under?
+Description: Generate and evaluate probabilistic solar forecasts, 
+	focusing on post-processing numerical weather prediction ensembles. 
+	Options include empirical cumulative distribution functions (CDFs) 
+    suitable for raw ensembles and persistence ensembles; Bayesian 
+    model averaging (BMA) and ensemble model output statistics (EMOS)
+    post-processing, and some discontinued attempts at kernel density
+    estimation and spatial aggregation with copulas (not exported). 
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Imports: 
@@ -40,4 +43,4 @@ Suggests:
     RColorBrewer,
     testthat,
     zeallot
-RoxygenNote: 6.1.0
+RoxygenNote: 6.1.1

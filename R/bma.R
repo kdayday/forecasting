@@ -1,18 +1,28 @@
 
 
-# Fit BMA coefficients for beta distributions with discrete component at 1 for each ensemble member
-# Data should be pre-processed and normalized to [0,1] so that clipped values are exactly 1
-#' @param tel Vector of training telemetry data on [0,1] OR a matrix [time x member] of training telemetry data tailored to each member
+#' Fit BMA coefficients for beta distributions with discrete component at 1 for
+#' each ensemble member Data should be pre-processed and normalized to [0,1] so
+#' that clipped values are exactly 1
+#' @param tel Vector of training telemetry data on [0,1] OR a matrix [time x
+#'   member] of training telemetry data tailored to each member
 #' @param ens Matrix of training ensemble member data [time x member] on [0,1]
-#' @param bma_distribution Either "beta" or "truncnorm" to select type of distribution for member kernel dressing
-#' @param lr_formula Formula in terms of x,y for logistic regression model, defaults to "y ~ x". Requires a negative x intercept to model PoC < 0.5.
-#' @param A_transform A function for transforming forecast data before logistic regression to get a's (optional)
-#' @param lm_formula Formula in terms of x,y for linear regression model, defaults to "y ~ x + 0"
-#' @param B_transform A function for transforming forecast data before linear regression to get b's (optional)
-#' @param percent_clipping_threshold [0,1] Power is designated as clipped when above this percentage of the maximum power
-#' @param tol A tolerance for determining if normalized values all are <=1 (defaults to 0.001)
+#' @param bma_distribution Either "beta" or "truncnorm" to select type of
+#'   distribution for member kernel dressing
+#' @param lr_formula Formula in terms of x,y for logistic regression model,
+#'   defaults to "y ~ x". Requires a negative x intercept to model PoC < 0.5.
+#' @param A_transform A function for transforming forecast data before logistic
+#'   regression to get a's (optional)
+#' @param lm_formula Formula in terms of x,y for linear regression model,
+#'   defaults to "y ~ x + 0"
+#' @param B_transform A function for transforming forecast data before linear
+#'   regression to get b's (optional)
+#' @param percent_clipping_threshold [0,1] Power is designated as clipped when
+#'   above this percentage of the maximum power
+#' @param tol A tolerance for determining if normalized values all are <=1
+#'   (defaults to 0.001)
 #' @param ... Optional arguments to pass to EM algorithm
 #' @return A list for a discrete-continuous mixture model with beta distribution
+#' @export
 bma_ens_models <- function(tel, ens, bma_distribution="beta", max_power=NA, lr_formula= y ~ x, A_transform=NA, lm_formula= y ~ x + 0, B_transform=NA, percent_clipping_threshold=0.995, tol=1e-3, ...) {
   if (any(tel < 0, na.rm=T) | any(tel - 1>tol, na.rm=T)) stop('Telemetry must be normalized to [0,1] to apply beta model.')
   if (any(ens < 0, na.rm=T) | any(ens - 1>tol , na.rm=T)) stop('All forecasts must be normalized to [0,1] to apply beta model.')
@@ -62,16 +72,19 @@ bma_ens_models <- function(tel, ens, bma_distribution="beta", max_power=NA, lr_f
 }
 
 
-# Do logistic regression to get a single ensemble member's 'a' coefficients.
-#' Uses a penalized/Firth linear regression to handle quasi- or complete separation
-# Telemetry within given tolerance of 1 are assumed to be clipped
-# glm and lm omit NA values by default
+#' Do logistic regression to get a single ensemble member's 'a' coefficients.
+#' Uses a penalized/Firth linear regression to handle quasi- or complete
+#' separation Telemetry within given tolerance of 1 are assumed to be clipped
+#' glm and lm omit NA values by default
 #' @param fc Vector of training forecast data on [0,1]
 #' @param tel Vector of telemetry data on [0,1]
 #' @param form Formula in terms of x,y for logistic regression model
-#' @param A_transform A function for pre-transforming the forecast data (optional), e.g. function(X) return(log(x)+1)
-#' @param percent_clipping_threshold Percentage threshold for determining if clipping is occurring
+#' @param A_transform A function for pre-transforming the forecast data
+#'   (optional), e.g. function(X) return(log(x)+1)
+#' @param percent_clipping_threshold Percentage threshold for determining if
+#'   clipping is occurring
 #' @return Summary of the glm model
+#' @export
 get_lr <- function(fc, tel, form, A_transform, percent_clipping_threshold){
   clipped <- as.integer(tel >= percent_clipping_threshold)
   if (typeof(A_transform)=="closure") fc <- sapply(fc, FUN = A_transform)
@@ -96,16 +109,18 @@ get_lr <- function(fc, tel, form, A_transform, percent_clipping_threshold){
   }
 }
 
-
-# Get the linear model for a single ensemble member's 'b' coefficients
-# Telemetry within given tolerance of 1 are assumed to be clipped
-# glm and lm omit NA values by default
+#' Get the linear model for a single ensemble member's 'b' coefficients
+#' Telemetry within given tolerance of 1 are assumed to be clipped glm and lm
+#' omit NA values by default
 #' @param fc Vector of training forecast data on [0,1]
 #' @param tel Vector of telemetry data on [0,1]
 #' @param form Formula in terms of x,y for logistic regression model
-#' @param B_transform A function for pre-transforming the forecast data (optional), e.g. function(X) return(log(x)+1)
-#' @param percent_clipping_threshold Percentage threshold for determining if clipping is occurring
+#' @param B_transform A function for pre-transforming the forecast data
+#'   (optional), e.g. function(X) return(log(x)+1)
+#' @param percent_clipping_threshold Percentage threshold for determining if
+#'   clipping is occurring
 #' @return Summary of the lm model
+#' @export
 get_lm <- function(fc, tel, form, B_transform, percent_clipping_threshold){
   # Only grab values that are unclipped and that have both forecast and telemetry available
   unclipped <- tel < percent_clipping_threshold & !is.na(tel) & !is.na(fc)
@@ -238,14 +253,16 @@ get_log_lik <- function(C0, w, OBS, FCST, B0, B1, PoC, B_transform, percent_clip
   return(sum(log(sumz), na.rm=T))
 }
 
-# Get z=weighted probability for single instance
-# Returns NA for missing values and observations exactly at 0
-# Defines clipping with a percentage threshold, lambda
-# density is (PoC/(1-lambda))*1[obs>=lambda] + ((1-PoC)/CDF(lambda))*Beta(obs,a,b)*1[obs < lambda]
+#' Get z=weighted probability for single instance Returns NA for missing values
+#' and observations exactly at 0 Defines clipping with a percentage threshold,
+#' lambda density is (PoC/(1-lambda))*1[obs>=lambda] +
+#' ((1-PoC)/CDF(lambda))*Beta(obs,a,b)*1[obs < lambda]
 #' @param OBS A single observation
 #' @param PoC Probability of clipping
-#' @param param1 Distribution parameter 1: mean for both beta and truncnorm distributions
-#' @param param2 Distribution parameter 2: gamma for a beta; sd for a truncnorm distribution
+#' @param param1 Distribution parameter 1: mean for both beta and truncnorm
+#'   distributions
+#' @param param2 Distribution parameter 2: gamma for a beta; sd for a truncnorm
+#'   distribution
 #' @param w this member's weight
 #' @param percent_clipping_threshold [0,..1]
 #' @param bma_distribution "beta" or "truncnorm"
@@ -266,24 +283,27 @@ get_weighted_probability <- function(OBS, PoC, param1, param2, w, percent_clippi
   }
 }
 
-# Get PoC (probability of clipping) for single instance
-# PoC is estimated from logit(PoC)=a0 + a1*f + a2*1[obs==1]
-# This seems inverted from the PoP defintion from Will Kleiber's code, which reads to me like it should be 1-PoP
+#' Get PoC (probability of clipping) for single instance PoC is estimated from
+#' logit(PoC)=a0 + a1*f + a2*1[obs==1] This seems inverted from the PoP
+#' defintion from Will Kleiber's code, which reads to me like it should be 1-PoP
 #' @param OBS single observation
 #' @param FCST single forecast
 #' @param A0 intercept of logistic regression of PoC
 #' @param A1 slope of logistic regression of PoC
-#' @param A2 coefficient of clipped forecast indicator [FCST==1] in logistic regression of PoC
+#' @param A2 coefficient of clipped forecast indicator [FCST==1] in logistic
+#'   regression of PoC
+#' @export
 get_poc <- function(FCST, A0, A1, A2, A_transform=NA) {
   if (is.na(FCST)) {return(NA)}
   else return(1/(1+exp(-(A0+A1*ifelse(typeof(A_transform)=='closure', A_transform(FCST), FCST)+A2*(FCST==1)))))
 }
 
-# Get rho parameter of beta distribution for single instance
+#' Get rho parameter of beta distribution for single instance
 #' @param FCST single forecast
 #' @param B0 intercept of linear model of mean
 #' @param B1 slope of linear model of mean
-#' @param B_tranform Function of forecast transformation for B coefficients (optional), e.g. function(x) return(log(x)+1)
+#' @param B_tranform Function of forecast transformation for B coefficients
+#'   (optional), e.g. function(x) return(log(x)+1)
 get_rho <- function(FCST, B0, B1, B_transform=NA) {
   if (is.na(FCST) | is.na(B0) | is.na(B1)) {return(NA)}
   # Estimate rho= mu (mean)
@@ -296,9 +316,10 @@ get_rho <- function(FCST, B0, B1, B_transform=NA) {
   return(mu)
 }
 
-# Get sigma parameter of distribution for single instance
+#' Get sigma parameter of distribution for single instance
 #' @param mu mean value for this forecast (AKA rho)
 #' @param C0 height parameter of quadratic model of variance
+#' @export
 get_sigma <- function(mu, C0) {
   # Return NA if mu is missing or on the boundary
   if (is.na(mu) | mu==0) {return(NA)}
@@ -312,9 +333,10 @@ get_sigma <- function(mu, C0) {
   return(sigma)
 }
 
-# Get gamma parameter of beta distribution for single instance
+#' Get gamma parameter of beta distribution for single instance
 #' @param mu beta mean value for this forecast (AKA rho)
 #' @param sigmas standard deviation
+#' @export
 get_gamma <- function(mu, sigma) {
   # Return NA if mu is missing or on the boundary
   if (is.na(mu) | mu==0) {return(NA)}
@@ -322,7 +344,8 @@ get_gamma <- function(mu, sigma) {
   return(mu*(1-mu)/sigma^2 - 1)
 }
 
-# Get density of beta distribution with gamma, rho parameterization at given value
+#' Get density of beta distribution with gamma, rho parameterization at given
+#' value
 #' @param x Value or vector of values [0,1]
 #' @param g Gamma = alpha + beta
 #' @param rho rho = alpha/(alpha + beta)

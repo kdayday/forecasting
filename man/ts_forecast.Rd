@@ -2,32 +2,13 @@
 % Please edit documentation in R/ts_forecast.R
 \name{ts_forecast}
 \alias{ts_forecast}
-\title{Initialize a time series of power forecasts. Assumes training data already captures
-differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.}
+\title{Register ts_forecast constructor to allow for overloading}
 \usage{
-ts_forecast(x, start_time, time_step, scale = "region",
-  location = "unknown", method = "vine", n = 3000,
-  epsilon = c(0.05, 0.95))
+ts_forecast(x, ...)
 }
 \arguments{
-\item{x}{A list of training data the length of the time-series. Each element should be [ntrain x 1] matrix of training data (for scale=='site')
-or a [ntrain x nsites] matrix for scale=='region' or 'total'}
-
-\item{start_time}{A lubridate time stamp}
-
-\item{time_step}{Time step in hours}
-
-\item{scale}{One of 'site', 'region', 'total'}
-
-\item{location}{A string}
-
-\item{method}{One of 'gaussian', 'empirical', 'vine' (irrelevant if scale == 'site')}
-
-\item{n}{An integer: Number of samples to take}
-
-\item{epsilon}{Probability levels for lower/upper tail VaR/CVaR calculations, defaults to c(0.05, 0.95)}
+\item{x}{A ts_forecast object}
 }
 \description{
-Initialize a time series of power forecasts. Assumes training data already captures
-differences in magnitude (i.e., power rating) amongst sites. Forecast is NA for times when sun is down.
+Register ts_forecast constructor to allow for overloading
 }

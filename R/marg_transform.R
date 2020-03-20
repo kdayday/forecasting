@@ -3,7 +3,6 @@
 #' @param x A vector of samples or a pre-trained prob_forecast object
 #' @param cdf.method Method for estimating the marginal distribution. One of 'empirical', 'kde1d', 'geenens', 'kernsmooth', "precalcbma"
 #' @param ... Optional arguments to the distribution estimator. 'xmax' can be used for 'kde1d' and 'geenens'
-#' @return
 marg_transform <- function(x, cdf.method='geenens', ... ) {
 
   func <- marginal_lookup(cdf.method)

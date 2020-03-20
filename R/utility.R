@@ -3,6 +3,7 @@
 #' @param date_start A lubridate: Start date of data to load
 #' @param date_end A lubridate: End date of data to load
 #' @return Number of days in requested data sequence
+#' @export
 get_ndays <- function(date_start,date_end) {
   interval(date_start, date_end)/days(1) + 1
 }
@@ -11,15 +12,16 @@ get_ndays <- function(date_start,date_end) {
 #' @param date_data_start A lubridate: Date of first day in file
 #' @param date_start A lubridate: Start date of data to load
 #' @return Index number of first requested day
+#' @export
 get_start_day <- function(date_data_start, date_start){
   interval(date_data_start, date_start)/days(1) + 1
 }
 
-#' Load data from a NETCDF file of ensemble forecasts
-#' Assumed file dimensions: Day x Hour x Site x Lead time x Ensemble member
-#' Returns an array of data: [site x member x time] or [site x member x time x lead time]
-#' Site selection and member selection can all be vectors of non-consecutive values
-#' Time-point selection is a consecutive sequence
+#' Load data from a NETCDF file of ensemble forecasts Assumed file dimensions:
+#' Day x Hour x Site x Lead time x Ensemble member Returns an array of data:
+#' [site x member x time] or [site x member x time x lead time] Site selection
+#' and member selection can all be vectors of non-consecutive values Time-point
+#' selection is a consecutive sequence
 #' @param fname file name
 #' @param members A vector of member indices
 #' @param sites A vector of sites
@@ -27,8 +29,11 @@ get_start_day <- function(date_data_start, date_start){
 #' @param date_start A lubridate: Start date of data to load
 #' @param date_end A lubridate: End date of data to load
 #' @param date_data_start A lubridate: Date of first day in file
-#' @param truncate Boolean: Whether or not to truncate the forecasts at the site maximum power
-#' @param site_max_power A vector of the maximum power at ALL sites (not just those listed in sites)
+#' @param truncate Boolean: Whether or not to truncate the forecasts at the site
+#'   maximum power
+#' @param site_max_power A vector of the maximum power at ALL sites (not just
+#'   those listed in sites)
+#' @export
 get_netcdf_forecast_data <- function(fname, members, sites, lead_times, date_start, date_end,
                                      date_data_start=lubridate::ymd(20160101),
                                      ts_per_day=24, vname="power",
@@ -83,6 +88,7 @@ get_netcdf_forecast_data <- function(fname, members, sites, lead_times, date_sta
 #' @param sites A vector of sites
 #' @param date_start A lubridate: Start date of data to load
 #' @param date_end A lubridate: End date of data to load
+#' @export
 get_netcdf_telemetry_data <- function(fname, sites, date_start, date_end,
                                      date_data_start=lubridate::ymd(20160101),
                                      ts_per_day=288, vname="hsl_power") {

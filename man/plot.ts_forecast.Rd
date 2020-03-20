@@ -4,12 +4,22 @@
 \alias{plot.ts_forecast}
 \title{Plot fan plot of the time-series probabilistic forecast}
 \usage{
-\method{plot}{ts_forecast}(x, ..., actuals = NA)
+\method{plot}{ts_forecast}(x, tel = NA, window = NA,
+  normalize.by = 1, xbreaks = 4, ylim = NULL, text.size = 14,
+  ylab = ggplot2::element_blank(), xlab = ggplot2::element_blank(),
+  xticklab = T, yticklab = T)
 }
 \arguments{
 \item{x}{A ts_forecast object}
 
-\item{actuals}{list of realized values (optional)}
+\item{tel}{vector of telemetry (optional)}
+
+\item{window}{(optional) A vector of (start index, end index) to plot certain
+time window}
+
+\item{normalize.by}{Plant power to normalize results. Defaults to 1}
+
+\item{xbreaks}{(optional) Determines width between x ticks, defaults to 4}
 }
 \description{
 Plot fan plot of the time-series probabilistic forecast

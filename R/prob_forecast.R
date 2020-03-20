@@ -5,16 +5,21 @@
 #'
 #' @param x A prob_forecast object
 #' @return Number of sites
+#' @export
 length.prob_forecast <- function(x){
   return(x$d)
 }
 
-#' Calculate interval score for an interval from alpha/2 to 1-alpha/2. Negatively oriented
-#' First term: sharpness, second and third terms: penalty for reliability.
+#' Calculate interval score
+#'
+#' Calculate interval score for an interval from alpha/2 to 1-alpha/2.
+#' Negatively oriented First term: sharpness, second and third terms: penalty
+#' for reliability.
 #'
 #' @param x A prob_forecast object
-#' @param actual The realized value
-#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+#' @param tel The realized value
+#' @param alpha Numeric, to identify the (1-alpha)*100\% quantile of interest
+#' @export
 IS <- function(x, tel, alpha) {
   eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
@@ -24,11 +29,13 @@ IS <- function(x, tel, alpha) {
   is <- (u-l) + (2/alpha)*(l-tel)*(tel < l) + (2/alpha)*(tel-u)*(tel > u)
 }
 
-#' Calculate sharpness for an interval from alpha/2 to 1-alpha/2. Negatively oriented
+#' Calculate sharpness for an interval from alpha/2 to 1-alpha/2. Negatively
+#' oriented
 #'
 #' @param x A prob_forecast object
 #' @param tel (unneeded) For calling signature consistency with other metrics
-#' @param alpha Numeric, to identify the (1-alpha)*100% quantile of interest
+#' @param alpha Numeric, to identify the (1-alpha)*100\% quantile of interest
+#' @export
 sharpness <- function(x, tel, alpha) {
   eps <- 1e-6
   if (alpha<=0 | alpha>=1) stop(paste('Alpha should be (0,1), given ', alpha, '.', sep=''))
@@ -42,6 +49,7 @@ sharpness <- function(x, tel, alpha) {
 #'
 #' @param x A prob_forecast object
 #' @param tel Telemetry value
+#' @export
 CRPS <- function(x, tel) {
   y <- x$quantiles$x
 
@@ -54,12 +62,19 @@ CRPS <- function(x, tel) {
 }
 
 #' Plot probabilistic forecast's quantiles
+#'
+#' @param x A prob_forecast object
+#' @export
 plot.prob_forecast <- function(x) {
   plot(x$quantiles$x, x$quantiles$q, xlab='Power [MW]', ylab='Cumulative Distribution',
       sub = paste("Location: ", x$location, ", Time:", x$time))
 }
 
 #' Plot probabilistic forecast's CRPS illustration
+#'
+#' @param x A prob_forecast object
+#' @param tel telemetry
+#' @export
 plot_crps <- function(x, tel) {
   if (!is.prob_forecast(x)) stop("x must be a prob_forecast object to plot CRPS")
   y <- x$quantiles$x
@@ -100,22 +115,27 @@ plot_crps <- function(x, tel) {
 
 
 #' Check probabilistic forecast class
+#' @param x A prob_forecast object
+#' @export
 is.prob_forecast <- function(x) inherits(x, "prob_forecast")
 
 #' Register generic sample function
 #' @param x A prob_forecast object
+#' @export
 get_1d_samples <- function(x, ...) {
     UseMethod("get_1d_samples",x)
 }
 
 #' Register generic joint density function
 #' @param x An n-dimension prob_forecast object
+#' @export
 get_joint_density_grid <- function(x, ...) {
   UseMethod("get_joint_density_grid",x)
 }
 
 #' Register generic quantiles function
 #' @param x A prob_forecast object
+#' @export
 calc_quantiles <- function(x, ...) {
   UseMethod("calc_quantiles",x)
 }
@@ -129,10 +149,13 @@ CVAR <- function(x, ...) {
 
 #' Register generic plot function
 #' @param x A prob_forecast object
+#' @export
 plot_pdf <- function(x, ...) {
   UseMethod("plot_pdf",x)
 }
 
+#' Error check quantiles are in (0,1)
+#' @param quantiles A vector
 error_check_calc_quantiles_input <- function(quantiles){
   if (!(all(quantiles > 0 & quantiles < 1))) stop('Bad input. All quantiles must be in (0,1).')
 }
@@ -369,15 +392,22 @@ qc_input <- function(dat) {
   return(dat)
 }
 
-#' Initialize a univariate probabilistic power forecast for a specific time point by ranking ensemble members.
-#' Its rank quantiles are the basic quantiles estimated from the ensemble members; the quantiles are the rank quantiles iterpolated
-#' to the quantiles of interest (i.e., 10%, 20%, etc...)
+#' A binned probability forecast
+#'
+#' Initialize a univariate probabilistic power forecast for a specific time
+#' point by ranking ensemble members and *linearly interpolating*. For a classic
+#' stepped forecast, see \code{\link{fc_empirical}}.Its rank quantiles are the
+#' basic quantiles estimated from the ensemble members; the quantiles are the
+#' rank quantiles iterpolated to the quantiles of interest (i.e., 10%, 20%,
+#' etc...).
+#' @family forecast classes
 #'
 #' @param data.input A numeric vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param max_power Maximum power for normalizing forecast to [0,1]
 #' @return A probabilistic forecast object
+#' @export
 fc_binned <- function(data.input, location, time, max_power, ...) {
   members <- qc_input(data.input)
 
@@ -393,7 +423,9 @@ fc_binned <- function(data.input, location, time, max_power, ...) {
   return(x)
 }
 
-#' Check class
+#' Check class is fc_binned
+#' @param x Object to check
+#' @export
 is.fc_binned <- function(x) inherits(x, "fc_binned")
 
 #' Calculate forecast quantiles
@@ -401,6 +433,7 @@ is.fc_binned <- function(x) inherits(x, "fc_binned")
 #' @param x fc_binned object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+#' @export
 calc_quantiles.fc_binned <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
@@ -412,19 +445,25 @@ calc_quantiles.fc_binned <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
 #' Not implemented
 #'
 #' @param x fc_binned object
+#' @export
 plot_pdf.fc_binned <- function(x) {
   stop("Not implemented for binned probability forecasts.")
 }
 
 # ---------------------------------------------------------------------------------------------
 
-#' Initialize a forecast using an empirical (stepped, not interpolated) CDF of a training set.
-#' Can be applied for a climatology, raw ensemble, or persistence ensemble type forecast.
+#' A forecast from an empirical CDF
+#'
+#' Initialize a forecast using an empirical (stepped, not interpolated) CDF of a
+#' training set. Can be applied for a climatology, raw ensemble, or persistence
+#' ensemble type forecast.
+#' @family forecast classes
 #'
 #' @param data.input A numeric vector of training data
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @return A probabilistic forecast object
+#' @export
 fc_empirical <- function(data.input, location, time, ...) {
   data.input <- qc_input(data.input)
 
@@ -440,6 +479,8 @@ fc_empirical <- function(data.input, location, time, ...) {
 }
 
 #' Check class
+#' @param x Object to check
+#' @export
 is.fc_empirical <- function(x) inherits(x, "fc_empirical")
 
 #' Calculate forecast quantiles
@@ -448,6 +489,7 @@ is.fc_empirical <- function(x) inherits(x, "fc_empirical")
 #' @param telemetry A vector of telemetry to generate the empirical cdf from
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+#' @export
 calc_quantiles.fc_empirical <- function(x, telemetry=FALSE, quantiles=seq(0.001, 0.999, by=0.001)) {
   if (all(!telemetry)) stop("telemetry is a required input.")
   error_check_calc_quantiles_input(quantiles)
@@ -459,22 +501,29 @@ calc_quantiles.fc_empirical <- function(x, telemetry=FALSE, quantiles=seq(0.001,
 #' Not implemented
 #'
 #' @param x fc_empirical object
+#' @export
 plot_pdf.fc_empirical <- function(x) {
   stop("Not implemented for empirical forecasts.")
 }
 
 # ---------------------------------------------------------------------------------------------
 
-#' Initialize a univariate probabilistic power forecast for a specific time point using Bayesian model averaging (BMA)
+#' A BMA forecast
+#'
+#' Initialize a univariate probabilistic power forecast for a specific time
+#' point using Bayesian model averaging (BMA)
+#' @family forecast classes
 #'
 #' @param data.input A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
 #' @param model A pre-fit BMA model from bma_ens_models
 #' @param max_power Maximum power for normalizing forecast to [0,1]
-#' @param bma_distribution One of "beta", "truncnorm" --> determines the type of distribution used for each member's kernel dressing
+#' @param bma_distribution One of "beta", "truncnorm" --> determines the type of
+#'   distribution used for each member's kernel dressing
 #' @param ... Additional parameters
 #' @return A probabilistic forecast object
+#' @export
 fc_bma <- function(data.input, location, time, model, max_power, bma_distribution, ...) {
   if (!(bma_distribution %in% c("beta", "truncnorm"))) stop("bma_distribution not recognized. Must be 'beta' or 'truncnorm'.")
   # Sanity check inputs; skip if model is missing
@@ -502,6 +551,8 @@ fc_bma <- function(data.input, location, time, model, max_power, bma_distributio
 }
 
 #' Check class
+#' @param x An object to check
+#' @export
 is.fc_bma <- function(x) inherits(x, "fc_bma")
 
 #' Specific quality control handling for BMA forecasts, for missing members that have already been trained in the model.
@@ -520,6 +571,7 @@ qc_bma_input <- function(members, model) {
 #' @param x fc_bma object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+#' @export
 calc_quantiles.fc_bma <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
@@ -532,10 +584,16 @@ calc_quantiles.fc_bma <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.
   return(list(x=xseq, q=quantiles, d=d))
 }
 
+#' Get the discrete and continuous components of the weighted mixture model as
+#' well as the member-specific components
 #' @param x fc_bma object
 #' @param xseq Vector of x values in [0,1] to evaluate
-#' @param discrete Boolean of whether to return density with a discrete component (approximate) or with the continuous estimation (congruent with CDF)
-#' @return A list of the discrete components (PoC) and continuous density (pdf) and distribution (cdf) for each member
+#' @param discrete Boolean of whether to return density with a discrete
+#'   component (approximate) or with the continuous estimation (congruent with
+#'   CDF)
+#' @return A list of the discrete components (PoC) and continuous density (pdf)
+#'   and distribution (cdf) for each member
+#' @export
 get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.0001), discrete=F) {
   i.thresh <- max(which(xseq < x$model$percent_clipping_threshold))
 
@@ -566,7 +624,7 @@ get_discrete_continuous_model <- function(x, xseq=seq(0, 1, 0.0001), discrete=F)
               members=list(PoC=shape_params$PoC, pdf=pdf_member/x$max_power, cdf=cdf_member, codes=codes)))
 }
 
-# Get cumulative distribution for individual ensemble member
+#' Get cumulative distribution for individual ensemble member
 #' @param param1 First parameter: alpha for a beta distribution; mean for a truncnorm
 #' @param param2 First parameter: beta for a beta distribution; sd for a truncnorm
 #' @param bma_distribution "beta" or "truncnorm"
@@ -653,6 +711,10 @@ get_shape_params <- function(x) {
 #' 2 -> Reverse J-type
 #' 3 -> J-type
 #' 4 -> Upside-down U type
+#' @param bma_distribution "beta" or "truncnorm"; "truncnorm" returns 0
+#' @param alpha Value of beta distribution's alpha parameter
+#' @param beta Value of beta distribution's beta parameter
+#' @export
 get_beta_distribution_geometry_code <- function(bma_distribution, alpha, beta) {
   if (bma_distribution == "truncnorm") {return(0)} # Not applicable
 
@@ -666,6 +728,7 @@ get_beta_distribution_geometry_code <- function(bma_distribution, alpha, beta) {
 
 #' Plot APPROXIMATION of the BMA probability density function, including the member component contributributions
 #' @param discrete Boolean on whether to plot a discrete component as approximation or the continuous equivalent above the clipping threshold
+#' @export
 plot_pdf.fc_bma <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
 
   model <- get_discrete_continuous_model(x, discrete=discrete)
@@ -705,15 +768,21 @@ plot_pdf.fc_bma <- function(x, actual=NA, ymax=NA, normalize=F, discrete=T) {
 
 # ---------------------------------------------------------------------------------------------
 
-#' Initialize a univariate probabilistic power forecast for a specific time point using ensemble model output statistics (EMOS)
+#' An EMOS forecast
+#'
+#' Initialize a univariate probabilistic power forecast for a specific time
+#' point using ensemble model output statistics (EMOS)
+#' @family forecast classes
 #'
 #' @param data.input A vector of ensemble members
 #' @param location A string
 #' @param time A lubridate time stamp
-#' @param model A pre-fit BMA model from bma_ens_models; list of a, b, c, d parameters
+#' @param model A pre-fit BMA model from bma_ens_models; list of a, b, c, d
+#'   parameters
 #' @param max_power Maximum power for normalizing forecast to [0,1]
 #' @param ... Additional parameters
 #' @return A probabilistic forecast object
+#' @export
 fc_emos <- function(data.input, location, time, model, max_power,  ...) {
   # Sanity check inputs; skip if model is missing
   if (all(is.na(model))) return(NA)
@@ -734,6 +803,8 @@ fc_emos <- function(data.input, location, time, model, max_power,  ...) {
 }
 
 #' Check class
+#' @param x An object to check
+#' @export
 is.fc_emos <- function(x) inherits(x, "fc_emos")
 
 
@@ -741,6 +812,7 @@ is.fc_emos <- function(x) inherits(x, "fc_emos")
 #' @param x fc_emos object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
+#' @export
 calc_quantiles.fc_emos <- function(x, model, quantiles=seq(0.001, 0.999, by=0.001)) {
   error_check_calc_quantiles_input(quantiles)
 
@@ -754,6 +826,11 @@ calc_quantiles.fc_emos <- function(x, model, quantiles=seq(0.001, 0.999, by=0.00
 }
 
 #' Plot EMOS forecast
+#' @param x A fc_emos object
+#' @param actual telemetry value
+#' @param ymax Maximum value to use on the y axis
+#' @param normalize Boolean of whether to normalize to site's maximum power
+#' @export
 plot_pdf.fc_emos <- function(x, actual=NA, ymax=NA, normalize=F) {
 
   ymax <- ifelse(is.na(ymax), max(x$quantiles$d)*ifelse(normalize, x$max_power, 1)*1.1, ymax)
