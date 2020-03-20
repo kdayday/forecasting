@@ -11,16 +11,23 @@ emos_model <- function(tel, ens, max_power, par_init=NA) {
   valid <- !(is.na(tel) | apply(ens, MARGIN=1, FUN=function(x) any(is.na(x))))
   # Some defaults are referenced to fitMOStruncnorm function in ensembleMOS
   if (sum(valid)==0) return(NA)
+  # C, D, A, B
+  par_default <- list(a=0, b=rep(1/ncol(ens), times=ncol(ens)), c=5, d=1)
   if (all(is.na(par_init))) {
-    # C, D, A, B
-    par_init <- list(a=0, b=rep(1/ncol(ens), times=ncol(ens)), c=5, d=1)
+    par_init <- par_default
   }
 
-  # Square-root b, c, d parameters
-  par <- c(sqrt(par_init$c), sqrt(par_init$d), par_init$a, sqrt(par_init$b))
-
-  opt <- optim(par, tnorm_crps_obj, obs=tel[valid], ens=matrix(ens[valid,], ncol=ncol(ens)), max_power=max_power, method="Nelder-Mead", control=list(maxit=1e7))
-
+  opt <- tryCatch({
+    # Square-root b, c, d parameters
+    par <- c(sqrt(par_init$c), sqrt(par_init$d), par_init$a, sqrt(par_init$b))
+    opt <- optim(par, tnorm_crps_obj, obs=tel[valid], ens=matrix(ens[valid,], ncol=ncol(ens)), max_power=max_power, method="Nelder-Mead", control=list(maxit=1e7))
+  }, error = function(e) {
+    if (grepl("function cannot be evaluated at initial parameters", e$message)) {
+      # Square-root b, c, d parameters
+      par <- c(sqrt(par_default$c), sqrt(par_default$d), par_default$a, sqrt(par_default$b))
+      opt <- optim(par, tnorm_crps_obj, obs=tel[valid], ens=matrix(ens[valid,], ncol=ncol(ens)), max_power=max_power, method="Nelder-Mead", control=list(maxit=1e7))
+    } else stop(e)
+  })
   # Re-square b, c, d parameters
   return(list(a=opt$par[3], b=opt$par[-(1:3)]^2, c=opt$par[1]^2, d=opt$par[2]^2))
 }
