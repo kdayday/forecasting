@@ -4,7 +4,7 @@
 \alias{plot_PIT_histogram}
 \title{Plot probability integral transform histogram}
 \usage{
-plot_PIT_histogram(ts, tel, nbins = 10)
+plot_PIT_histogram(ts, tel, nbins = 10, fname = NULL)
 }
 \arguments{
 \item{ts}{A ts_forecast object}
@@ -12,7 +12,15 @@ plot_PIT_histogram(ts, tel, nbins = 10)
 \item{tel}{A list of the telemetry values}
 
 \item{nbins}{To specify number of bars in the histogram}
+
+\item{fname}{(optional) file name to save plot}
 }
 \description{
 Plot probability integral transform histogram
 }
+\seealso{
+Other plots: \code{\link{plot_interval_width}},
+  \code{\link{plot_quantile_score}},
+  \code{\link{plot_reliability}}
+}
+\concept{plots}

@@ -5,7 +5,7 @@
 \title{Plot quantile score vs. quantiles}
 \usage{
 plot_quantile_score(ts, tel, quantiles = seq(0.01, 0.99, by = 0.01),
-  weighting = "none")
+  weighting = "none", fname = NULL)
 }
 \arguments{
 \item{ts}{A ts_forecast object}
@@ -15,10 +15,15 @@ plot_quantile_score(ts, tel, quantiles = seq(0.01, 0.99, by = 0.01),
 \item{quantiles}{A vector in (0,1)}
 
 \item{weighting}{One of "none" (default), "tails", "right", "left", "center"}
-}
-\value{
-ggplot2 plot
+
+\item{fname}{(optional) file name to save plot}
 }
 \description{
 Plot quantile score vs. quantiles
 }
+\seealso{
+Other plots: \code{\link{plot_PIT_histogram}},
+  \code{\link{plot_interval_width}},
+  \code{\link{plot_reliability}}
+}
+\concept{plots}

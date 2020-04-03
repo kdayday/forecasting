@@ -590,13 +590,15 @@ Brier <- function(ts, tel, thresholds) {
 
 #' Plot quantile score vs. quantiles
 #'
+#' @family plots
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param quantiles A vector in (0,1)
 #' @param weighting One of "none" (default), "tails", "right", "left", "center"
-#' @return ggplot2 plot
+#' @param fname (optional) file name to save plot
 #' @export
-plot_quantile_score <- function(ts, tel, quantiles=seq(0.01, 0.99, by=0.01), weighting="none") {
+plot_quantile_score <- function(ts, tel, quantiles=seq(0.01, 0.99, by=0.01),
+                                weighting="none", fname=NULL) {
   qs <- QS(ts, tel, quantiles)
   wqs <- weight_QS(qs, quantiles, weighting)
 
@@ -606,8 +608,8 @@ plot_quantile_score <- function(ts, tel, quantiles=seq(0.01, 0.99, by=0.01), wei
     ggplot2::geom_point() +
     ggplot2::xlab("Quantile") +
     ggplot2::ylab(paste(label, "Quantile Score"))
-
-  plot(g)
+  if (!is.null(fname)) {ggplot2::ggsave(fname, width = 5, height = 3)}
+  invisible(g)
 }
 
 #' Plot Brier score along the quantiles from 1 to 99
@@ -719,8 +721,12 @@ IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
 #' @return the average sharpness value (interval width)
 #' @export
 sharpness_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
-  sharpness_list <- get_metric_time_series(sharpness, ts, tel, normalize.by, metricArgs = list(alpha=alpha), ...)
-  return(list(mean=mean(sharpness_list, na.rm=T), min=min(sharpness_list, na.rm=T), max=max(sharpness_list, na.rm=T), sd=stats::sd(sharpness_list, na.rm=T)))
+  sharpness_list <- get_metric_time_series(sharpness, ts, tel, normalize.by,
+                                           metricArgs = list(alpha=alpha), ...)
+  return(list(mean=mean(sharpness_list, na.rm=T), min=min(sharpness_list, na.rm=T),
+              max=max(sharpness_list, na.rm=T), sd=stats::sd(sharpness_list, na.rm=T)))
+}
+
 
 #' Plot average interval width at different nominal intervals
 #'
@@ -749,33 +755,42 @@ plot_interval_width <- function(ts, tel, alphas = seq(0.9, 0.1, by=-0.1), normal
 #' Plot reliability
 #'
 #' Plot diagonal line diagram of quantiles + observations (i.e., a P-P plot)
+#' @family plots
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
+#' @param fname (optional) file name to save plot
 #' @param ... optional arguments to equalize_telemetry_forecast_length
 #' @export
-plot_reliability <- function(ts, tel, ...) {
+plot_reliability <- function(ts, tel, fname=NULL, ...) {
   x <- get_quantile_reliability(ts, tel, ...)
 
-  ggplot2::ggplot(data.frame(x=x$quantiles, y=x$quantiles), ggplot2::aes(x=x, y=y)) +
+  g <- ggplot2::ggplot(data.frame(x=x$quantiles, y=x$quantiles), ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_line() +
     ggplot2::geom_point(data=data.frame(x=x$quantiles[1:(length(x$quantiles)-1)], y=cumsum(x$hit_rate)[1:(length(x$quantiles)-1)]), shape=1) +
     ggplot2::xlab("Nominal Proportion") +
     ggplot2::ylab("Observed Proportion")
+  if (!is.null(fname)) {ggplot2::ggsave(fname, width = 5, height = 3)}
+  invisible(g)
 }
 
 #' Plot probability integral transform histogram
+#'
+#' @family plots
 #' @param ts A ts_forecast object
 #' @param tel A list of the telemetry values
 #' @param nbins To specify number of bars in the histogram
+#' @param fname (optional) file name to save plot
 #' @export
-plot_PIT_histogram <- function(ts, tel, nbins=10) {
+plot_PIT_histogram <- function(ts, tel, nbins=10, fname=NULL) {
   x <- calc_PIT_histogram(ts, tel, nbins, ...)
 
-  ggplot2::ggplot(data.frame(x=x$bin_means, y=x$bin_hits/sum(x$bin_hits)), ggplot2::aes(x=x, y=y)) +
+  g <- ggplot2::ggplot(data.frame(x=x$bin_means, y=x$bin_hits/sum(x$bin_hits)), ggplot2::aes(x=x, y=y)) +
     ggplot2::geom_col(width=x$bin_width) +
     ggplot2::geom_line(data.frame(x=c(0, 1), y=c(1/nbins, 1/nbins)), mapping=ggplot2::aes(x=x, y=y), linetype="dashed") +
     ggplot2::xlab("Probability Integral Transform") +
     ggplot2::ylab("Relative Frequency")
+  if (!is.null(fname)) {ggplot2::ggsave(fname, width = 5, height = 3)}
+  invisible(g)
 }
 
 #' Calculate data for probability integral transform histogram
