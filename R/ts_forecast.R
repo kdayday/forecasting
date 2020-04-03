@@ -721,6 +721,29 @@ IS_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
 sharpness_avg <-function(ts, tel, alpha, normalize.by=1, ...) {
   sharpness_list <- get_metric_time_series(sharpness, ts, tel, normalize.by, metricArgs = list(alpha=alpha), ...)
   return(list(mean=mean(sharpness_list, na.rm=T), min=min(sharpness_list, na.rm=T), max=max(sharpness_list, na.rm=T), sd=stats::sd(sharpness_list, na.rm=T)))
+
+#' Plot average interval width at different nominal intervals
+#'
+#' @family plots
+#' @param ts A ts_forecast object
+#' @param tel A list of the telemetry values
+#' @param alphas (optional) Vector of central (1-alpha)*100\% intervals to calculate
+#' @param normalize.by (optional) Value or vector to normalize by
+#' @param fname (optional) file name to save plot
+#' @export
+plot_interval_width <- function(ts, tel, alphas = seq(0.9, 0.1, by=-0.1), normalize.by=1,
+                                fname=NULL) {
+  widths <- sapply(alphas, FUN=function(a) sharpness_avg(ts, tel, alpha=a, normalize.by=normalize.by, agg=TRUE)$mean)
+
+  g <- ggplot2::ggplot(data.frame(x=(1-alphas)*100, y=widths), ggplot2::aes(x=x, y=y)) +
+    ggplot2::geom_point(mapping=ggplot2::aes(shape="A", color="A")) +
+    ggplot2::geom_line(mapping=ggplot2::aes(linetype="A", color="A")) +
+    ggplot2::xlab("Central Interval [%]") +
+    ggplot2::ylab(latex2exp::TeX('$\\bar{\\delta}$ $\\lbrack$% AC Rating$\\rbrack$')) +
+    ggplot2::scale_x_continuous(breaks=(1-alphas)*100) +
+    ggplot2::ylim(0, NA)
+  if (!is.null(fname)) {ggplot2::ggsave(fname, width = 5, height = 3)}
+  invisible(g)
 }
 
 #' Plot reliability
