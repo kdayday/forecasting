@@ -1,1 +1,8 @@
-Ongoing development of a package tailored to solar power forecasting, focusing on spatial aggregation from multiple sites.
+Generate and evaluate probabilistic solar forecasts, 
+focusing on post-processing numerical weather prediction ensembles. 
+
+Options include empirical cumulative distribution functions (CDFs) 
+    suitable for raw ensembles and persistence ensembles; Bayesian 
+    model averaging (BMA) and ensemble model output statistics (EMOS)
+    post-processing, and some discontinued attempts at kernel density
+    estimation and spatial aggregation with copulas (not exported). 
