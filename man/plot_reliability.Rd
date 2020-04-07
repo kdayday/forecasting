@@ -4,15 +4,23 @@
 \alias{plot_reliability}
 \title{Plot reliability}
 \usage{
-plot_reliability(ts, tel, ...)
+plot_reliability(ts, tel, fname = NULL, ...)
 }
 \arguments{
 \item{ts}{A ts_forecast object}
 
 \item{tel}{A list of the telemetry values}
 
+\item{fname}{(optional) file name to save plot}
+
 \item{...}{optional arguments to equalize_telemetry_forecast_length}
 }
 \description{
 Plot diagonal line diagram of quantiles + observations (i.e., a P-P plot)
 }
+\seealso{
+Other plots: \code{\link{plot_PIT_histogram}},
+  \code{\link{plot_interval_width}},
+  \code{\link{plot_quantile_score}}
+}
+\concept{plots}
