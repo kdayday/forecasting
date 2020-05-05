@@ -325,7 +325,7 @@ plot_cvar_over_time <- function(x) {
 #' @param agg Boolean, TRUE to aggregate telemetry to forecast resolution, FALSE
 #'   to expand forecast to telemetry resolution
 #' @param align Can be "end-of-hour", "half-hour " NaN first, telemetry lags
-#'   Defaults to "half hour backend". Currently half hour approaches expand
+#'   Defaults to "end-of-hour". Currently half hour approaches expand
 #'   forecast the same way.
 #' @return list of the telemetry and forecast data vectors, of equal length
 #' @export
