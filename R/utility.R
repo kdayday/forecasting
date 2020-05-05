@@ -59,7 +59,9 @@ get_netcdf_forecast_data <- function(fname, members, sites, lead_times, date_sta
   # Get a [member x day x hour] matrix at this site
   site_data <- function(site, lead_time) {
     m <- sapply(members, FUN = member_data, site=site, lead_time=lead_time, simplify ="array")
-    m[which(m > site_max_power[site])] <- site_max_power[site]
+    if (truncate) {
+      m[which(m > site_max_power[site])] <- site_max_power[site]
+    }
     return(m)
     }
 
