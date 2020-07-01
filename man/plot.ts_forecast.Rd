@@ -17,9 +17,19 @@
 \item{window}{(optional) A vector of (start index, end index) to plot certain
 time window}
 
-\item{normalize.by}{Plant power to normalize results. Defaults to 1}
+\item{normalize.by}{(optional) Plant power to normalize results. Defaults to 1}
 
 \item{xbreaks}{(optional) Determines width between x ticks, defaults to 4}
+
+\item{ylim}{(optional) Upper limit of y-axis}
+
+\item{ylab}{(optional) y-axis label}
+
+\item{xlab}{(optional) x-axis label}
+
+\item{xticklab}{(optional) Boolean Whether to label x-axis ticks. Defaults to True}
+
+\item{yticklab}{(optional) Boolean Whether to label y-axis ticks. Defaults to True}
 }
 \description{
 Plot fan plot of the time-series probabilistic forecast

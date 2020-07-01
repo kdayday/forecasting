@@ -204,8 +204,13 @@ length.ts_forecast <- function(x) {
 #' @param tel vector of telemetry (optional)
 #' @param window (optional) A vector of (start index, end index) to plot certain
 #'   time window
-#' @param normalize.by Plant power to normalize results. Defaults to 1
+#' @param normalize.by (optional) Plant power to normalize results. Defaults to 1
 #' @param xbreaks (optional) Determines width between x ticks, defaults to 4
+#' @param ylim (optional) Upper limit of y-axis
+#' @param ylab (optional) y-axis label
+#' @param xlab (optional) x-axis label
+#' @param xticklab (optional) Boolean Whether to label x-axis ticks. Defaults to True
+#' @param yticklab (optional) Boolean Whether to label y-axis ticks. Defaults to True
 #' @export
 plot.ts_forecast <- function(x, tel=NA, window=NA, normalize.by=1, xbreaks=4, ylim=NULL, text.size =14,
                              ylab=ggplot2::element_blank(), xlab=ggplot2::element_blank(), xticklab=T, yticklab=T) {

@@ -18,7 +18,7 @@ the length of the forecast values}
 to expand forecast to telemetry resolution}
 
 \item{align}{Can be "end-of-hour", "half-hour " NaN first, telemetry lags
-Defaults to "half hour backend". Currently half hour approaches expand
+Defaults to "end-of-hour". Currently half hour approaches expand
 forecast the same way.}
 }
 \value{
