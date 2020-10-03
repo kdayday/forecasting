@@ -5,7 +5,7 @@
 \title{Calculate forecast quantiles}
 \usage{
 \method{calc_quantiles}{fc_bma}(x, model = NA, quantiles = seq(0.001,
-  0.999, by = 0.001))
+  0.999, by = 0.001), ...)
 }
 \arguments{
 \item{x}{fc_bma object}
