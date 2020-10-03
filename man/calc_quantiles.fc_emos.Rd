@@ -5,7 +5,7 @@
 \title{Calculate forecast quantiles}
 \usage{
 \method{calc_quantiles}{fc_emos}(x, model, quantiles = seq(0.001, 0.999,
-  by = 0.001))
+  by = 0.001), ...)
 }
 \arguments{
 \item{x}{fc_emos object}

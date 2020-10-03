@@ -5,7 +5,7 @@
 \title{Calculate forecast quantiles from samples of the vine copula}
 \usage{
 \method{calc_quantiles}{fc_vine}(x, samples = NA, samples.u = NA,
-  quantiles = seq(0.001, 0.999, by = 0.001))
+  quantiles = seq(0.001, 0.999, by = 0.001), ...)
 }
 \arguments{
 \item{x}{fc_vine object}

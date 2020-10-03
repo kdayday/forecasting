@@ -5,7 +5,7 @@
 \title{Calculate forecast quantiles}
 \usage{
 \method{calc_quantiles}{fc_empirical}(x, telemetry = FALSE,
-  quantiles = seq(0.001, 0.999, by = 0.001))
+  quantiles = seq(0.001, 0.999, by = 0.001), ...)
 }
 \arguments{
 \item{x}{fc_empirical object}

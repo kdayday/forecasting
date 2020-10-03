@@ -135,7 +135,7 @@ get_lm <- function(fc, tel, form, B_transform, percent_clipping_threshold){
 
 # Expectation-maximization function, modified from code courtesy of Will Kleiber
 em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, percent_clipping_threshold, bma_distribution, max_power,
-               C0=0.06, eps=1e-005, maxiter=1000, CM2.iter=50, start.w=NULL)
+               C0=0.06, eps=1e-005, maxiter=1000, CM2.iter=1, start.w=NULL)
 
     # MODEL for one forecast : y_s is solar power, logit P(y_s = 1 | f) = a0 + a1 f
     #                          solar power level, conditional on it being less than rated power (i.e., 1) is beta distributed
@@ -157,6 +157,8 @@ em <- function(FCST, OBS, A0, A1, A2, B0, B1, A_transform, B_transform, percent_
 #  eps     stopping criterion
 #  maxiter maximum number of EM iterations allowed
 #  CM2.iter CM-2 step of EM algorithm will be run every CM2.iter iterations of the M and CM-1 steps
+#           Current formulation appears to have z entirely determined by C0, and additional iteration causes slow
+#           down instead of speed up
 #  start.w initial values for the weights (optional)
 
 {

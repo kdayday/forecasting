@@ -216,7 +216,7 @@ fc_vine <- function(data.input, location, time,
   x <- structure(dat, class = c("prob_forecast", "fc_vine"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  x$quantiles <- calc_quantiles(x, samples.u=samples.u)
+  x$quantiles <- calc_quantiles(x, samples.u=samples.u, ...)
 
   return(x)
 }
@@ -282,7 +282,7 @@ get_1d_samples.fc_vine <- function(x, samples.u=NA) {
 #' samples overrides samples.u if both are given
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.fc_vine <- function(x, samples=NA, samples.u=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_vine <- function(x, samples=NA, samples.u=NA, quantiles=seq(0.001, 0.999, by=0.001), ...) {
   error_check_calc_quantiles_input(quantiles)
 
   if (!(is.numeric(samples))) {samples <- get_1d_samples(x, samples.u)}
@@ -418,7 +418,7 @@ fc_binned <- function(data.input, location, time, max_power, ...) {
               d = 1)
 
   x <- structure(dat, class = c("prob_forecast", "fc_binned"))
-  x$quantiles <- calc_quantiles(x)
+  x$quantiles <- calc_quantiles(x, ...)
 
   return(x)
 }
@@ -434,7 +434,7 @@ is.fc_binned <- function(x) inherits(x, "fc_binned")
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
 #' @export
-calc_quantiles.fc_binned <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_binned <- function(x, quantiles=seq(0.001, 0.999, by=0.001), ...) {
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$rank_quantiles$y,  y=x$rank_quantiles$x, xout=quantiles)$y
 
@@ -473,7 +473,7 @@ fc_empirical <- function(data.input, location, time, ...) {
               d = 1)
 
   x <- structure(dat, class = c("prob_forecast", "fc_empirical"))
-  x$quantiles <- calc_quantiles(x, telemetry=data.input)
+  x$quantiles <- calc_quantiles(x, telemetry=data.input, ...)
 
   return(x)
 }
@@ -490,7 +490,7 @@ is.fc_empirical <- function(x) inherits(x, "fc_empirical")
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
 #' @export
-calc_quantiles.fc_empirical <- function(x, telemetry=FALSE, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_empirical <- function(x, telemetry=FALSE, quantiles=seq(0.001, 0.999, by=0.001), ...) {
   if (all(!telemetry)) stop("telemetry is a required input.")
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::quantile(telemetry, probs=quantiles, names=F, na.rm=T, type=1)
@@ -546,7 +546,7 @@ fc_bma <- function(data.input, location, time, model, max_power, bma_distributio
   # Complete probabilistic forecast by sampling and aggregating
   dc_model <- get_discrete_continuous_model(x)
   x$geometry_codes <- dc_model$geometries
-  x$quantiles <- calc_quantiles(x, model=dc_model)
+  x$quantiles <- calc_quantiles(x, model=dc_model, ...)
   return(x)
 }
 
@@ -572,7 +572,7 @@ qc_bma_input <- function(members, model) {
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
 #' @export
-calc_quantiles.fc_bma <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_bma <- function(x, model=NA, quantiles=seq(0.001, 0.999, by=0.001), ...) {
   error_check_calc_quantiles_input(quantiles)
 
   if (all(is.na(model))) model <- get_discrete_continuous_model(x)
@@ -798,7 +798,7 @@ fc_emos <- function(data.input, location, time, model, max_power,  ...) {
   )
   x <- structure(dat, class = c("prob_forecast", "fc_emos"))
 
-  x$quantiles <- calc_quantiles(x)
+  x$quantiles <- calc_quantiles(x, ...)
   return(x)
 }
 
@@ -813,7 +813,7 @@ is.fc_emos <- function(x) inherits(x, "fc_emos")
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
 #' @export
-calc_quantiles.fc_emos <- function(x, model, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_emos <- function(x, model, quantiles=seq(0.001, 0.999, by=0.001), ...) {
   error_check_calc_quantiles_input(quantiles)
 
   mn <- x$model$a + sum(x$model$b*x$members, na.rm = T)
@@ -877,7 +877,7 @@ fc_kde <- function(data.input, location, time, cdf.method='geenens', ...) {
   x <- structure(dat, class = c("prob_forecast", "fc_kde"))
 
   # Complete probabilistic forecast by sampling and aggregating
-  x$quantiles <- calc_quantiles(x)
+  x$quantiles <- calc_quantiles(x, ...)
   return(x)
 }
 
@@ -889,7 +889,7 @@ is.fc_kde <- function(x) inherits(x, "fc_kde")
 #' @param x fc_kde object
 #' @param quantiles Sequence of quantiles in (0,1)
 #' @return A list of q, the quantiles on [0, 1], and x, the estimated values
-calc_quantiles.fc_kde <- function(x, quantiles=seq(0.001, 0.999, by=0.001)) {
+calc_quantiles.fc_kde <- function(x, quantiles=seq(0.001, 0.999, by=0.001), ...) {
   error_check_calc_quantiles_input(quantiles)
   xseq <- stats::approx(x=x$model$u,  y=x$model$x, xout=quantiles)$y
 
